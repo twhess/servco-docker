@@ -44,7 +44,7 @@ export default defineConfig((ctx) => {
         // extendTsConfig (tsConfig) {}
       },
 
-      vueRouterMode: 'hash', // available values: 'hash', 'history'
+      vueRouterMode: 'history', // available values: 'hash', 'history'
       // vueRouterBase,
       // vueDevtools,
       // vueOptionsAPI: false,
@@ -112,11 +112,39 @@ export default defineConfig((ctx) => {
       // (like functional components as one of the examples),
       // you can manually specify Quasar components/directives to be available everywhere:
       //
-      // components: [],
-      // directives: [],
+      components: [
+        'QPage',
+        'QCard',
+        'QCardSection',
+        'QCardActions',
+        'QForm',
+        'QInput',
+        'QBtn',
+        'QIcon',
+        'QToolbar',
+        'QToolbarTitle',
+        'QDrawer',
+        'QList',
+        'QItem',
+        'QItemSection',
+        'QItemLabel',
+        'QScrollArea',
+        'QSeparator',
+        'QSpace',
+        'QAvatar',
+        'QMenu',
+        'QDialog',
+        'QCheckbox',
+        'QTooltip',
+        'QTable',
+        'QTh',
+        'QTr',
+        'QTd'
+      ],
+      directives: ['Ripple', 'ClosePopup'],
 
       // Quasar plugins
-      plugins: [],
+      plugins: ['Notify', 'Dialog'],
     },
 
     // animations: 'all', // --- includes all animations

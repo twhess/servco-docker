@@ -57,9 +57,10 @@ services:
   frontend:
     image: node:20-alpine
     container_name: myapp-frontend
-    working_dir: /app
+    working_dir: /app/app
     volumes:
       - ./frontend:/app
+      - frontend_node_modules:/app/app/node_modules
     ports:
       - "9000:9000"
     environment:
@@ -73,3 +74,4 @@ volumes:
   mysql_data:
   backend_storage:
   backend_cache:
+  frontend_node_modules:
