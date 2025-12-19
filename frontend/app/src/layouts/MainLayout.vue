@@ -176,6 +176,64 @@
           </q-item>
 
           <q-item
+            v-if="authStore.can('roles.view_all')"
+            clickable
+            v-ripple
+            to="/roles"
+            active-class="bg-blue-1 text-blue-9"
+          >
+            <q-item-section avatar>
+              <q-icon name="admin_panel_settings" />
+            </q-item-section>
+            <q-item-section>
+              Roles & Permissions
+            </q-item-section>
+          </q-item>
+
+          <q-item
+            clickable
+            v-ripple
+            to="/locations"
+            active-class="bg-blue-1 text-blue-9"
+          >
+            <q-item-section avatar>
+              <q-icon name="location_on" />
+            </q-item-section>
+            <q-item-section>
+              Locations
+            </q-item-section>
+          </q-item>
+
+          <q-item
+            clickable
+            v-ripple
+            to="/parts-requests"
+            active-class="bg-blue-1 text-blue-9"
+          >
+            <q-item-section avatar>
+              <q-icon name="local_shipping" />
+            </q-item-section>
+            <q-item-section>
+              Parts Requests
+            </q-item-section>
+          </q-item>
+
+          <q-item
+            v-if="authStore.user?.role === 'runner_driver'"
+            clickable
+            v-ripple
+            to="/runner-dashboard"
+            active-class="bg-blue-1 text-blue-9"
+          >
+            <q-item-section avatar>
+              <q-icon name="assignment" />
+            </q-item-section>
+            <q-item-section>
+              My Jobs
+            </q-item-section>
+          </q-item>
+
+          <q-item
             clickable
             v-ripple
             to="/profile"
@@ -260,9 +318,9 @@ const userInitials = computed(() => {
   if (firstName && lastName) {
     return `${firstName[0]}${lastName[0]}`.toUpperCase();
   } else if (firstName) {
-    return firstName[0].toUpperCase();
+    return firstName.charAt(0).toUpperCase();
   } else if (user.username) {
-    return user.username[0].toUpperCase();
+    return user.username.charAt(0).toUpperCase();
   }
 
   return '?';

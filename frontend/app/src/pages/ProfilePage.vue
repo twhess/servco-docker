@@ -1,7 +1,7 @@
 <template>
   <q-page class="q-pa-md">
     <div class="row justify-center">
-      <div class="col-12 col-md-8 col-lg-6">
+      <div class="col-12 col-md-6 col-lg-4">
         <q-card class="q-mb-md">
           <q-card-section>
             <div class="text-h5">Profile</div>
@@ -52,14 +52,14 @@
 
             <q-form @submit.prevent="handleUpdateProfile">
               <div class="row q-col-gutter-md">
-                <div class="col-12 col-sm-6">
+                <div class="col-12">
                   <q-input
                     v-model="profileForm.first_name"
                     label="First Name"
                     outlined
                   />
                 </div>
-                <div class="col-12 col-sm-6">
+                <div class="col-12">
                   <q-input
                     v-model="profileForm.last_name"
                     label="Last Name"
@@ -94,11 +94,37 @@
                 </div>
                 <div class="col-12">
                   <q-input
-                    v-model="profileForm.address"
+                    v-model="profileForm.address_line_1"
                     label="Address"
-                    type="textarea"
                     outlined
-                    rows="3"
+                  />
+                </div>
+                <div class="col-12">
+                  <q-input
+                    v-model="profileForm.address_line_2"
+                    label="Address 2"
+                    outlined
+                  />
+                </div>
+                <div class="col-12">
+                  <q-input
+                    v-model="profileForm.city"
+                    label="City"
+                    outlined
+                  />
+                </div>
+                <div class="col-12">
+                  <q-input
+                    v-model="profileForm.state"
+                    label="State"
+                    outlined
+                  />
+                </div>
+                <div class="col-12">
+                  <q-input
+                    v-model="profileForm.zip"
+                    label="Zip"
+                    outlined
                   />
                 </div>
               </div>
@@ -226,6 +252,11 @@ const profileForm = ref({
   email: '',
   phone_number: '',
   address: '',
+  address_line_1: '',
+  address_line_2: '',
+  city: '',
+  state: '',
+  zip: '',
 });
 
 const passwordForm = ref({
@@ -262,9 +293,9 @@ const userInitials = computed(() => {
   if (firstName && lastName) {
     return `${firstName[0]}${lastName[0]}`.toUpperCase();
   } else if (firstName) {
-    return firstName[0].toUpperCase();
+    return firstName.charAt(0).toUpperCase();
   } else if (user.username) {
-    return user.username[0].toUpperCase();
+    return user.username.charAt(0).toUpperCase();
   }
 
   return '?';
@@ -279,6 +310,11 @@ const loadProfileData = () => {
       email: authStore.user.email || '',
       phone_number: authStore.user.phone_number || '',
       address: authStore.user.address || '',
+      address_line_1: authStore.user.address_line_1 || '',
+      address_line_2: authStore.user.address_line_2 || '',
+      city: authStore.user.city || '',
+      state: authStore.user.state || '',
+      zip: authStore.user.zip || '',
     };
   }
 };
@@ -322,10 +358,15 @@ const handleFileSelect = async (event: Event) => {
       message: 'Avatar uploaded successfully!',
       position: 'top',
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMessage =
+      error instanceof Error && 'response' in error
+        ? (error as { response?: { data?: { message?: string } } }).response
+            ?.data?.message
+        : undefined;
     $q.notify({
       type: 'negative',
-      message: error.response?.data?.message || 'Failed to upload avatar',
+      message: errorMessage || 'Failed to upload avatar',
       position: 'top',
     });
   } finally {
@@ -334,33 +375,40 @@ const handleFileSelect = async (event: Event) => {
   }
 };
 
-const handleDeleteAvatar = async () => {
+const handleDeleteAvatar = () => {
   $q.dialog({
     title: 'Confirm',
     message: 'Are you sure you want to delete your avatar?',
     cancel: true,
     persistent: true,
-  }).onOk(async () => {
-    deletingAvatar.value = true;
+  }).onOk(() => {
+    void (async () => {
+      deletingAvatar.value = true;
 
-    try {
-      const response = await api.delete('/profile/avatar');
-      authStore.user = response.data.user;
+      try {
+        const response = await api.delete('/profile/avatar');
+        authStore.user = response.data.user;
 
-      $q.notify({
-        type: 'positive',
-        message: 'Avatar deleted successfully!',
-        position: 'top',
-      });
-    } catch (error: any) {
-      $q.notify({
-        type: 'negative',
-        message: error.response?.data?.message || 'Failed to delete avatar',
-        position: 'top',
-      });
-    } finally {
-      deletingAvatar.value = false;
-    }
+        $q.notify({
+          type: 'positive',
+          message: 'Avatar deleted successfully!',
+          position: 'top',
+        });
+      } catch (error: unknown) {
+        const errorMessage =
+          error instanceof Error && 'response' in error
+            ? (error as { response?: { data?: { message?: string } } }).response
+                ?.data?.message
+            : undefined;
+        $q.notify({
+          type: 'negative',
+          message: errorMessage || 'Failed to delete avatar',
+          position: 'top',
+        });
+      } finally {
+        deletingAvatar.value = false;
+      }
+    })();
   });
 };
 
@@ -377,9 +425,13 @@ const handleUpdateProfile = async () => {
       message: 'Profile updated successfully!',
       position: 'top',
     });
-  } catch (error: any) {
-    profileError.value =
-      error.response?.data?.message || 'Failed to update profile';
+  } catch (error: unknown) {
+    const errorMessage =
+      error instanceof Error && 'response' in error
+        ? (error as { response?: { data?: { message?: string } } }).response
+            ?.data?.message
+        : undefined;
+    profileError.value = errorMessage || 'Failed to update profile';
   } finally {
     updatingProfile.value = false;
   }
@@ -404,9 +456,13 @@ const handleChangePassword = async () => {
       new_password: '',
       new_password_confirmation: '',
     };
-  } catch (error: any) {
-    passwordError.value =
-      error.response?.data?.message || 'Failed to change password';
+  } catch (error: unknown) {
+    const errorMessage =
+      error instanceof Error && 'response' in error
+        ? (error as { response?: { data?: { message?: string } } }).response
+            ?.data?.message
+        : undefined;
+    passwordError.value = errorMessage || 'Failed to change password';
   } finally {
     changingPassword.value = false;
   }

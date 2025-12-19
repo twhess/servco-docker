@@ -17,12 +17,34 @@
                 v-model="searchQuery"
                 placeholder="Search users..."
                 class="q-mr-sm"
-                style="min-width: 250px"
+                style="width: 100%; max-width: 250px"
               >
                 <template v-slot:prepend>
                   <q-icon name="search" />
                 </template>
               </q-input>
+              <q-btn
+                flat
+                @click="openAddUserDialog"
+                class="q-mr-sm"
+              >
+                <q-icon name="add" color="primary" size="sm" class="q-mr-xs" />
+                <span class="text-primary">Add User</span>
+              </q-btn>
+              <q-btn
+                flat
+                @click="toggleShowInactive"
+              >
+                <q-icon
+                  :name="showInactive ? 'visibility' : 'visibility_off'"
+                  :color="showInactive ? 'secondary' : 'grey'"
+                  size="sm"
+                  class="q-mr-xs"
+                />
+                <span :class="showInactive ? 'text-secondary' : 'text-grey'">
+                  {{ showInactive ? 'Hide Inactive' : 'Show Inactive' }}
+                </span>
+              </q-btn>
             </div>
 
             <q-table
@@ -45,6 +67,19 @@
                       <div class="text-weight-medium">{{ props.row.username }}</div>
                     </div>
                   </div>
+                </q-td>
+              </template>
+
+              <template v-slot:body-cell-role="props">
+                <q-td :props="props">
+                  <q-chip
+                    dense
+                    :color="getRoleColor(props.row.role)"
+                    text-color="white"
+                    size="sm"
+                  >
+                    {{ getRoleLabel(props.row.role) }}
+                  </q-chip>
                 </q-td>
               </template>
 
@@ -87,13 +122,16 @@
                         <q-item
                           clickable
                           v-close-popup
-                          @click="deleteUser(props.row)"
-                          class="text-negative"
+                          @click="toggleUserActive(props.row)"
+                          :class="props.row.active ? 'text-warning' : 'text-positive'"
                         >
                           <q-item-section avatar>
-                            <q-icon name="delete" color="negative" />
+                            <q-icon
+                              :name="props.row.active ? 'block' : 'check_circle'"
+                              :color="props.row.active ? 'warning' : 'positive'"
+                            />
                           </q-item-section>
-                          <q-item-section>Delete</q-item-section>
+                          <q-item-section>{{ props.row.active ? 'Deactivate' : 'Activate' }}</q-item-section>
                         </q-item>
                       </q-list>
                     </q-menu>
@@ -108,17 +146,17 @@
 
     <!-- Edit User Dialog -->
     <q-dialog v-model="showEditDialog">
-      <q-card style="min-width: 600px; max-width: 90vw">
+      <q-card style="width: 100%; max-width: 600px; max-height: 80vh">
         <q-card-section class="row items-center q-pb-none">
           <div class="text-h6">Edit User</div>
           <q-space />
           <q-btn icon="close" flat round dense v-close-popup />
         </q-card-section>
 
-        <q-card-section v-if="editForm">
+        <q-card-section v-if="editForm" class="scroll">
           <q-form @submit.prevent="saveUser">
             <div class="row q-col-gutter-md">
-              <div class="col-12 col-sm-6">
+              <div class="col-12">
                 <q-input
                   v-model="editForm.username"
                   label="Username"
@@ -128,7 +166,7 @@
                 />
               </div>
 
-              <div class="col-12 col-sm-6">
+              <div class="col-12">
                 <q-input
                   v-model="editForm.employee_id"
                   label="Employee ID"
@@ -137,7 +175,38 @@
                 />
               </div>
 
-              <div class="col-12 col-sm-6">
+              <div class="col-12">
+                <q-select
+                  v-model="editForm.role_ids"
+                  label="Roles"
+                  outlined
+                  dense
+                  :options="roles"
+                  option-value="id"
+                  option-label="display_name"
+                  emit-value
+                  map-options
+                  multiple
+                  use-chips
+                  hint="Assign one or more roles to this user"
+                >
+                  <template v-slot:selected-item="scope">
+                    <q-chip
+                      removable
+                      dense
+                      @remove="scope.removeAtIndex(scope.index)"
+                      :tabindex="scope.tabindex"
+                      color="primary"
+                      text-color="white"
+                      size="sm"
+                    >
+                      {{ scope.opt.display_name || scope.opt }}
+                    </q-chip>
+                  </template>
+                </q-select>
+              </div>
+
+              <div class="col-12">
                 <q-input
                   v-model="editForm.first_name"
                   label="First Name"
@@ -146,7 +215,7 @@
                 />
               </div>
 
-              <div class="col-12 col-sm-6">
+              <div class="col-12">
                 <q-input
                   v-model="editForm.last_name"
                   label="Last Name"
@@ -155,7 +224,7 @@
                 />
               </div>
 
-              <div class="col-12 col-sm-6">
+              <div class="col-12">
                 <q-input
                   v-model="editForm.preferred_name"
                   label="Preferred Name"
@@ -164,7 +233,7 @@
                 />
               </div>
 
-              <div class="col-12 col-sm-6">
+              <div class="col-12">
                 <q-input
                   v-model="editForm.phone_number"
                   label="Phone Number"
@@ -173,7 +242,7 @@
                 />
               </div>
 
-              <div class="col-12 col-sm-6">
+              <div class="col-12">
                 <q-input
                   v-model="editForm.email"
                   label="Email"
@@ -187,7 +256,7 @@
                 />
               </div>
 
-              <div class="col-12 col-sm-6">
+              <div class="col-12">
                 <q-input
                   v-model="editForm.personal_email"
                   label="Personal Email"
@@ -197,7 +266,7 @@
                 />
               </div>
 
-              <div class="col-12 col-sm-6">
+              <div class="col-12">
                 <q-input
                   v-model="editForm.dext_email"
                   label="Dext Email"
@@ -207,7 +276,7 @@
                 />
               </div>
 
-              <div class="col-12 col-sm-6">
+              <div class="col-12">
                 <q-input
                   v-model="editForm.pin_code"
                   label="PIN Code"
@@ -216,16 +285,23 @@
                 />
               </div>
 
-              <div class="col-12 col-sm-6">
-                <q-input
-                  v-model="editForm.home_shop"
-                  label="Home Shop"
+              <div class="col-12">
+                <q-select
+                  v-model="editForm.home_location_id"
+                  label="Home Shop Location"
                   outlined
                   dense
+                  :options="locations"
+                  option-value="id"
+                  option-label="name"
+                  emit-value
+                  map-options
+                  clearable
+                  hint="Select user's primary shop location"
                 />
               </div>
 
-              <div class="col-12 col-sm-6">
+              <div class="col-12">
                 <q-input
                   v-model="editForm.slack_id"
                   label="Slack ID"
@@ -234,7 +310,7 @@
                 />
               </div>
 
-              <div class="col-12 col-sm-6">
+              <div class="col-12">
                 <q-input
                   v-model="editForm.paytype"
                   label="Pay Type"
@@ -245,13 +321,60 @@
 
               <div class="col-12">
                 <q-input
-                  v-model="editForm.address"
+                  v-model="editForm.address_line_1"
                   label="Address"
-                  type="textarea"
                   outlined
                   dense
-                  rows="2"
                 />
+              </div>
+
+              <div class="col-12">
+                <q-input
+                  v-model="editForm.address_line_2"
+                  label="Address 2"
+                  outlined
+                  dense
+                />
+              </div>
+
+              <div class="col-12">
+                <q-input
+                  v-model="editForm.city"
+                  label="City"
+                  outlined
+                  dense
+                />
+              </div>
+
+              <div class="col-12">
+                <q-input
+                  v-model="editForm.state"
+                  label="State"
+                  outlined
+                  dense
+                />
+              </div>
+
+              <div class="col-12">
+                <q-input
+                  v-model="editForm.zip"
+                  label="Zip"
+                  outlined
+                  dense
+                />
+              </div>
+
+              <div class="col-12">
+                <q-toggle
+                  v-model="editForm.active"
+                  label="Active User"
+                  color="positive"
+                  :false-value="false"
+                  :true-value="true"
+                />
+                <div class="text-caption text-grey-7">
+                  {{ editForm.active ? 'User is currently active' : 'User is currently inactive' }}
+                </div>
               </div>
             </div>
 
@@ -275,9 +398,272 @@
       </q-card>
     </q-dialog>
 
+    <!-- Add User Dialog -->
+    <q-dialog v-model="showAddDialog">
+      <q-card style="width: 100%; max-width: 600px; max-height: 80vh">
+        <q-card-section class="row items-center q-pb-none">
+          <div class="text-h6">Add New User</div>
+          <q-space />
+          <q-btn icon="close" flat round dense v-close-popup />
+        </q-card-section>
+
+        <q-card-section class="scroll">
+          <q-form @submit.prevent="addUser">
+            <div class="row q-col-gutter-md">
+              <div class="col-12">
+                <q-input
+                  v-model="addForm.username"
+                  label="Username"
+                  outlined
+                  dense
+                  :rules="[(val) => (val && val.length > 0) || 'Username is required']"
+                />
+              </div>
+
+              <div class="col-12">
+                <q-input
+                  v-model="addForm.password"
+                  label="Password"
+                  type="password"
+                  outlined
+                  dense
+                  :rules="[(val) => (val && val.length >= 8) || 'Password must be at least 8 characters']"
+                />
+              </div>
+
+              <div class="col-12">
+                <q-input
+                  v-model="addForm.password_confirmation"
+                  label="Confirm Password"
+                  type="password"
+                  outlined
+                  dense
+                  :rules="[(val) => val === addForm.password || 'Passwords do not match']"
+                />
+              </div>
+
+              <div class="col-12">
+                <q-input
+                  v-model="addForm.employee_id"
+                  label="Employee ID"
+                  outlined
+                  dense
+                />
+              </div>
+
+              <div class="col-12">
+                <q-select
+                  v-model="addForm.role_ids"
+                  label="Roles"
+                  outlined
+                  dense
+                  :options="roles"
+                  option-value="id"
+                  option-label="display_name"
+                  emit-value
+                  map-options
+                  multiple
+                  use-chips
+                  hint="Assign one or more roles to this user"
+                >
+                  <template v-slot:selected-item="scope">
+                    <q-chip
+                      removable
+                      dense
+                      @remove="scope.removeAtIndex(scope.index)"
+                      :tabindex="scope.tabindex"
+                      color="primary"
+                      text-color="white"
+                      size="sm"
+                    >
+                      {{ scope.opt.display_name || scope.opt }}
+                    </q-chip>
+                  </template>
+                </q-select>
+              </div>
+
+              <div class="col-12">
+                <q-input
+                  v-model="addForm.first_name"
+                  label="First Name"
+                  outlined
+                  dense
+                />
+              </div>
+
+              <div class="col-12">
+                <q-input
+                  v-model="addForm.last_name"
+                  label="Last Name"
+                  outlined
+                  dense
+                />
+              </div>
+
+              <div class="col-12">
+                <q-input
+                  v-model="addForm.preferred_name"
+                  label="Preferred Name"
+                  outlined
+                  dense
+                />
+              </div>
+
+              <div class="col-12">
+                <q-input
+                  v-model="addForm.phone_number"
+                  label="Phone Number"
+                  outlined
+                  dense
+                />
+              </div>
+
+              <div class="col-12">
+                <q-input
+                  v-model="addForm.email"
+                  label="Email"
+                  type="email"
+                  outlined
+                  dense
+                  :rules="[
+                    (val) => (val && val.length > 0) || 'Email is required',
+                    (val) => /.+@.+\..+/.test(val) || 'Invalid email format',
+                  ]"
+                />
+              </div>
+
+              <div class="col-12">
+                <q-input
+                  v-model="addForm.personal_email"
+                  label="Personal Email"
+                  type="email"
+                  outlined
+                  dense
+                />
+              </div>
+
+              <div class="col-12">
+                <q-input
+                  v-model="addForm.dext_email"
+                  label="Dext Email"
+                  type="email"
+                  outlined
+                  dense
+                />
+              </div>
+
+              <div class="col-12">
+                <q-input
+                  v-model="addForm.pin_code"
+                  label="PIN Code"
+                  outlined
+                  dense
+                />
+              </div>
+
+              <div class="col-12">
+                <q-select
+                  v-model="addForm.home_location_id"
+                  label="Home Shop Location"
+                  outlined
+                  dense
+                  :options="locations"
+                  option-value="id"
+                  option-label="name"
+                  emit-value
+                  map-options
+                  clearable
+                  hint="Select user's primary shop location"
+                />
+              </div>
+
+              <div class="col-12">
+                <q-input
+                  v-model="addForm.slack_id"
+                  label="Slack ID"
+                  outlined
+                  dense
+                />
+              </div>
+
+              <div class="col-12">
+                <q-input
+                  v-model="addForm.paytype"
+                  label="Pay Type"
+                  outlined
+                  dense
+                />
+              </div>
+
+              <div class="col-12">
+                <q-input
+                  v-model="addForm.address_line_1"
+                  label="Address"
+                  outlined
+                  dense
+                />
+              </div>
+
+              <div class="col-12">
+                <q-input
+                  v-model="addForm.address_line_2"
+                  label="Address 2"
+                  outlined
+                  dense
+                />
+              </div>
+
+              <div class="col-12">
+                <q-input
+                  v-model="addForm.city"
+                  label="City"
+                  outlined
+                  dense
+                />
+              </div>
+
+              <div class="col-12">
+                <q-input
+                  v-model="addForm.state"
+                  label="State"
+                  outlined
+                  dense
+                />
+              </div>
+
+              <div class="col-12">
+                <q-input
+                  v-model="addForm.zip"
+                  label="Zip"
+                  outlined
+                  dense
+                />
+              </div>
+            </div>
+
+            <div class="row q-mt-md q-gutter-sm">
+              <q-btn
+                label="Cancel"
+                flat
+                color="grey"
+                v-close-popup
+              />
+              <q-space />
+              <q-btn
+                type="submit"
+                label="Add User"
+                color="primary"
+                :loading="loading"
+              />
+            </div>
+          </q-form>
+        </q-card-section>
+      </q-card>
+    </q-dialog>
+
     <!-- User Details Dialog -->
     <q-dialog v-model="showUserDialog">
-      <q-card style="min-width: 400px">
+      <q-card style="width: 100%; max-width: 500px">
         <q-card-section class="row items-center q-pb-none">
           <div class="text-h6">User Details</div>
           <q-space />
@@ -426,6 +812,8 @@ interface User {
   id: number;
   username: string;
   email: string;
+  role?: string;
+  role_ids?: number[];
   employee_id?: string;
   first_name?: string;
   last_name?: string;
@@ -433,11 +821,18 @@ interface User {
   phone_number?: string;
   pin_code?: string;
   home_shop?: string;
+  home_location_id?: number | null;
   personal_email?: string;
   slack_id?: string;
   dext_email?: string;
   address?: string;
+  address_line_1?: string;
+  address_line_2?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
   paytype?: string;
+  active: boolean;
   created_at: string;
   updated_at?: string;
 }
@@ -447,10 +842,51 @@ const $q = useQuasar();
 const users = ref<User[]>([]);
 const loading = ref(false);
 const searchQuery = ref('');
+const showInactive = ref(false);
 const showUserDialog = ref(false);
 const showEditDialog = ref(false);
+const showAddDialog = ref(false);
 const selectedUser = ref<User | null>(null);
 const editForm = ref<User | null>(null);
+const addForm = ref({
+  username: '',
+  password: '',
+  password_confirmation: '',
+  employee_id: '',
+  role: 'read_only',
+  role_ids: [] as number[],
+  first_name: '',
+  last_name: '',
+  preferred_name: '',
+  phone_number: '',
+  email: '',
+  personal_email: '',
+  dext_email: '',
+  pin_code: '',
+  home_shop: '',
+  home_location_id: null as number | null,
+  slack_id: '',
+  paytype: '',
+  address_line_1: '',
+  address_line_2: '',
+  city: '',
+  state: '',
+  zip: '',
+});
+
+const locations = ref<any[]>([]);
+const roles = ref<any[]>([]);
+
+const roleOptions = [
+  { value: 'super_admin', label: 'Super Admin' },
+  { value: 'ops_admin', label: 'Ops Admin' },
+  { value: 'dispatcher', label: 'Dispatcher' },
+  { value: 'shop_manager', label: 'Shop Manager' },
+  { value: 'parts_manager', label: 'Parts Manager' },
+  { value: 'runner_driver', label: 'Runner Driver' },
+  { value: 'technician_mobile', label: 'Mobile Technician' },
+  { value: 'read_only', label: 'Read Only' },
+];
 
 const pagination = ref({
   sortBy: 'id',
@@ -475,6 +911,13 @@ const columns = [
     label: 'Username',
     align: 'left' as const,
     field: 'username',
+    sortable: true,
+  },
+  {
+    name: 'role',
+    label: 'Role',
+    align: 'left' as const,
+    field: 'role',
     sortable: true,
   },
   {
@@ -605,7 +1048,8 @@ const filteredUsers = computed(() => {
 async function fetchUsers() {
   loading.value = true;
   try {
-    const response = await api.get('/users');
+    const params = showInactive.value ? { include_inactive: 'true' } : {};
+    const response = await api.get('/users', { params });
     users.value = response.data;
     pagination.value.rowsNumber = response.data.length;
   } catch (error) {
@@ -634,12 +1078,66 @@ function editUser(user: User) {
   showEditDialog.value = true;
 }
 
+function openAddUserDialog() {
+  // Reset the form
+  addForm.value = {
+    username: '',
+    password: '',
+    password_confirmation: '',
+    employee_id: '',
+    first_name: '',
+    last_name: '',
+    preferred_name: '',
+    phone_number: '',
+    email: '',
+    personal_email: '',
+    dext_email: '',
+    pin_code: '',
+    home_shop: '',
+    home_location_id: null,
+    slack_id: '',
+    paytype: '',
+    address_line_1: '',
+    address_line_2: '',
+    city: '',
+    state: '',
+    zip: '',
+  };
+  showAddDialog.value = true;
+}
+
+async function loadLocations() {
+  try {
+    const response = await api.get('/locations', { params: { per_page: 100 } });
+    locations.value = response.data.data;
+  } catch (error) {
+    console.error('Failed to load locations', error);
+  }
+}
+
+async function loadRoles() {
+  try {
+    const response = await api.get('/roles');
+    roles.value = response.data;
+  } catch (error) {
+    console.error('Failed to load roles', error);
+  }
+}
+
 async function saveUser() {
   if (!editForm.value) return;
 
   loading.value = true;
   try {
     await api.put(`/users/${editForm.value.id}`, editForm.value);
+
+    // If role_ids is set, assign roles to user
+    if (editForm.value.role_ids && editForm.value.role_ids.length > 0) {
+      await api.post(`/users/${editForm.value.id}/roles`, {
+        role_ids: editForm.value.role_ids,
+      });
+    }
+
     $q.notify({
       type: 'positive',
       message: 'User updated successfully',
@@ -654,32 +1152,71 @@ async function saveUser() {
       message: 'Failed to update user',
       position: 'top',
     });
+  } finally{
+    loading.value = false;
+  }
+}
+
+async function addUser() {
+  loading.value = true;
+  try {
+    await api.post('/register', addForm.value);
+    $q.notify({
+      type: 'positive',
+      message: 'User added successfully',
+      position: 'top',
+    });
+    showAddDialog.value = false;
+    await fetchUsers();
+  } catch (error) {
+    console.error('Error adding user:', error);
+    const errorMessage =
+      error instanceof Error && 'response' in error
+        ? (error as { response?: { data?: { message?: string } } }).response
+            ?.data?.message
+        : undefined;
+    $q.notify({
+      type: 'negative',
+      message: errorMessage || 'Failed to add user',
+      position: 'top',
+    });
   } finally {
     loading.value = false;
   }
 }
 
-function deleteUser(user: User) {
+function toggleShowInactive() {
+  showInactive.value = !showInactive.value;
+  void fetchUsers();
+}
+
+function toggleUserActive(user: User) {
+  const action = user.active ? 'deactivate' : 'activate';
   $q.dialog({
-    title: 'Confirm Delete',
-    message: `Are you sure you want to delete ${user.username}?`,
+    title: `Confirm ${action.charAt(0).toUpperCase() + action.slice(1)}`,
+    message: `Are you sure you want to ${action} ${user.username}?`,
     cancel: true,
     persistent: true,
   }).onOk(() => {
     void (async () => {
       try {
-        await api.delete(`/users/${user.id}`);
+        await api.post(`/users/${user.id}/toggle-active`);
         $q.notify({
           type: 'positive',
-          message: 'User deleted successfully',
+          message: `User ${action}d successfully`,
           position: 'top',
         });
         await fetchUsers();
       } catch (error) {
-        console.error('Error deleting user:', error);
+        console.error(`Error ${action}ing user:`, error);
+        const errorMessage =
+          error instanceof Error && 'response' in error
+            ? (error as { response?: { data?: { message?: string } } }).response
+                ?.data?.message
+            : undefined;
         $q.notify({
           type: 'negative',
-          message: 'Failed to delete user',
+          message: errorMessage || `Failed to ${action} user`,
           position: 'top',
         });
       }
@@ -699,8 +1236,30 @@ function formatDate(dateString: string) {
   });
 }
 
+function getRoleLabel(role: string | undefined): string {
+  if (!role) return 'No Role';
+  const roleOption = roleOptions.find(r => r.value === role);
+  return roleOption?.label || role;
+}
+
+function getRoleColor(role: string | undefined): string {
+  const colors: Record<string, string> = {
+    super_admin: 'red',
+    ops_admin: 'deep-orange',
+    dispatcher: 'blue',
+    shop_manager: 'green',
+    parts_manager: 'teal',
+    runner_driver: 'purple',
+    technician_mobile: 'indigo',
+    read_only: 'grey',
+  };
+  return colors[role || 'read_only'] || 'grey';
+}
+
 onMounted(() => {
   void fetchUsers();
+  void loadLocations();
+  void loadRoles();
 });
 </script>
 

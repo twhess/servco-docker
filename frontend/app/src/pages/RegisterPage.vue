@@ -104,11 +104,16 @@
             </div>
 
             <div class="col-12 col-sm-6">
-              <q-input
-                v-model="homeShop"
-                type="text"
-                label="Home Shop"
+              <q-select
+                v-model="homeLocationId"
+                label="Home Shop Location"
                 outlined
+                :options="locations"
+                option-value="id"
+                option-label="name"
+                emit-value
+                map-options
+                clearable
               />
             </div>
 
@@ -210,10 +215,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from 'stores/auth';
 import { useQuasar } from 'quasar';
+import { api } from 'boot/axios';
 
 const router = useRouter();
 const authStore = useAuthStore();
@@ -230,15 +236,26 @@ const preferredName = ref('');
 const phoneNumber = ref('');
 const pinCode = ref('');
 const homeShop = ref('');
+const homeLocationId = ref<number | null>(null);
 const personalEmail = ref('');
 const slackId = ref('');
 const dextEmail = ref('');
 const address = ref('');
 const paytype = ref('');
+const locations = ref<any[]>([]);
 const isPwd = ref(true);
 const isPwdConfirm = ref(true);
 const loading = ref(false);
 const errorMessage = ref('');
+
+async function loadLocations() {
+  try {
+    const response = await api.get('/locations', { params: { per_page: 100 } });
+    locations.value = response.data.data;
+  } catch (error) {
+    console.error('Failed to load locations', error);
+  }
+}
 
 const handleRegister = async () => {
   loading.value = true;
@@ -256,6 +273,7 @@ const handleRegister = async () => {
     phone_number: phoneNumber.value,
     pin_code: pinCode.value,
     home_shop: homeShop.value,
+    home_location_id: homeLocationId.value,
     personal_email: personalEmail.value,
     slack_id: slackId.value,
     dext_email: dextEmail.value,
@@ -276,6 +294,10 @@ const handleRegister = async () => {
     errorMessage.value = result.error || 'Registration failed. Please try again.';
   }
 };
+
+onMounted(() => {
+  void loadLocations();
+});
 </script>
 
 <style scoped>

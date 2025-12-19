@@ -6,6 +6,7 @@ interface User {
   id: number;
   username: string;
   email: string;
+  role?: string;
   avatar?: string;
   employee_id?: string;
   first_name?: string;
@@ -18,6 +19,11 @@ interface User {
   slack_id?: string;
   dext_email?: string;
   address?: string;
+  address_line_1?: string;
+  address_line_2?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
   paytype?: string;
 }
 
@@ -37,6 +43,11 @@ interface RegisterData {
   slack_id?: string;
   dext_email?: string;
   address?: string;
+  address_line_1?: string;
+  address_line_2?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
   paytype?: string;
 }
 
@@ -44,6 +55,7 @@ interface AuthState {
   user: User | null;
   token: string | null;
   isAuthenticated: boolean;
+  abilities: Record<string, boolean>;
 }
 
 interface ApiErrorResponse {
@@ -56,6 +68,7 @@ export const useAuthStore = defineStore('auth', {
     user: null,
     token: localStorage.getItem('auth_token'),
     isAuthenticated: !!localStorage.getItem('auth_token'),
+    abilities: {},
   }),
 
   actions: {
@@ -64,6 +77,7 @@ export const useAuthStore = defineStore('auth', {
         const response = await api.post('/login', { login, password });
         this.token = response.data.token;
         this.user = response.data.user;
+        this.abilities = response.data.abilities || {};
         this.isAuthenticated = true;
 
         localStorage.setItem('auth_token', response.data.token);
@@ -130,12 +144,17 @@ export const useAuthStore = defineStore('auth', {
     async fetchUser() {
       try {
         const response = await api.get('/user');
-        this.user = response.data;
+        this.user = response.data.user;
+        this.abilities = response.data.abilities || {};
         return { success: true };
       } catch {
         await this.logout();
         return { success: false };
       }
+    },
+
+    can(ability: string): boolean {
+      return this.abilities[ability] === true;
     },
 
     initializeAuth() {

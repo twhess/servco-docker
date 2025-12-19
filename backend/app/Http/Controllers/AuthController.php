@@ -15,6 +15,7 @@ class AuthController extends Controller
             'username' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users',
             'password' => 'required|string|min:8|confirmed',
+            'role' => 'nullable|in:super_admin,ops_admin,dispatcher,shop_manager,parts_manager,runner_driver,technician_mobile,read_only',
             'employee_id' => 'nullable|string|max:255',
             'first_name' => 'nullable|string|max:255',
             'last_name' => 'nullable|string|max:255',
@@ -22,10 +23,16 @@ class AuthController extends Controller
             'phone_number' => 'nullable|string|max:255',
             'pin_code' => 'nullable|string|max:255',
             'home_shop' => 'nullable|string|max:255',
+            'home_location_id' => 'nullable|exists:service_locations,id',
             'personal_email' => 'nullable|string|email|max:255',
             'slack_id' => 'nullable|string|max:255',
             'dext_email' => 'nullable|string|email|max:255',
             'address' => 'nullable|string',
+            'address_line_1' => 'nullable|string|max:255',
+            'address_line_2' => 'nullable|string|max:255',
+            'city' => 'nullable|string|max:255',
+            'state' => 'nullable|string|max:255',
+            'zip' => 'nullable|string|max:255',
             'paytype' => 'nullable|string|max:255',
         ]);
 
@@ -33,6 +40,7 @@ class AuthController extends Controller
             'username' => $request->username,
             'email' => $request->email,
             'password' => Hash::make($request->password),
+            'role' => $request->role ?? 'read_only',
             'employee_id' => $request->employee_id,
             'first_name' => $request->first_name,
             'last_name' => $request->last_name,
@@ -40,10 +48,16 @@ class AuthController extends Controller
             'phone_number' => $request->phone_number,
             'pin_code' => $request->pin_code,
             'home_shop' => $request->home_shop,
+            'home_location_id' => $request->home_location_id,
             'personal_email' => $request->personal_email,
             'slack_id' => $request->slack_id,
             'dext_email' => $request->dext_email,
             'address' => $request->address,
+            'address_line_1' => $request->address_line_1,
+            'address_line_2' => $request->address_line_2,
+            'city' => $request->city,
+            'state' => $request->state,
+            'zip' => $request->zip,
             'paytype' => $request->paytype,
         ]);
 
@@ -80,6 +94,7 @@ class AuthController extends Controller
             'user' => $user,
             'token' => $token,
             'token_type' => 'Bearer',
+            'abilities' => $user->getAbilities(),
         ]);
     }
 
@@ -94,12 +109,24 @@ class AuthController extends Controller
 
     public function user(Request $request)
     {
-        return response()->json($request->user());
+        $user = $request->user();
+        return response()->json([
+            'user' => $user,
+            'abilities' => $user->getAbilities(),
+        ]);
     }
 
     public function users(Request $request)
     {
-        $users = User::orderBy('created_at', 'desc')->get();
+        $includeInactive = $request->query('include_inactive', 'false') === 'true';
+
+        $query = User::orderBy('created_at', 'desc');
+
+        if (!$includeInactive) {
+            $query->where('active', true);
+        }
+
+        $users = $query->get();
         return response()->json($users);
     }
 
@@ -110,6 +137,7 @@ class AuthController extends Controller
         $request->validate([
             'username' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users,email,' . $id,
+            'role' => 'nullable|in:super_admin,ops_admin,dispatcher,shop_manager,parts_manager,runner_driver,technician_mobile,read_only',
             'employee_id' => 'nullable|string|max:255',
             'first_name' => 'nullable|string|max:255',
             'last_name' => 'nullable|string|max:255',
@@ -117,16 +145,23 @@ class AuthController extends Controller
             'phone_number' => 'nullable|string|max:255',
             'pin_code' => 'nullable|string|max:255',
             'home_shop' => 'nullable|string|max:255',
+            'home_location_id' => 'nullable|exists:service_locations,id',
             'personal_email' => 'nullable|string|email|max:255',
             'slack_id' => 'nullable|string|max:255',
             'dext_email' => 'nullable|string|email|max:255',
             'address' => 'nullable|string',
+            'address_line_1' => 'nullable|string|max:255',
+            'address_line_2' => 'nullable|string|max:255',
+            'city' => 'nullable|string|max:255',
+            'state' => 'nullable|string|max:255',
+            'zip' => 'nullable|string|max:255',
             'paytype' => 'nullable|string|max:255',
         ]);
 
         $user->update($request->only([
             'username',
             'email',
+            'role',
             'employee_id',
             'first_name',
             'last_name',
@@ -134,10 +169,16 @@ class AuthController extends Controller
             'phone_number',
             'pin_code',
             'home_shop',
+            'home_location_id',
             'personal_email',
             'slack_id',
             'dext_email',
             'address',
+            'address_line_1',
+            'address_line_2',
+            'city',
+            'state',
+            'zip',
             'paytype',
         ]));
 
@@ -147,21 +188,23 @@ class AuthController extends Controller
         ]);
     }
 
-    public function deleteUser(Request $request, $id)
+    public function toggleUserActive(Request $request, $id)
     {
         $user = User::findOrFail($id);
 
-        // Prevent users from deleting themselves
+        // Prevent users from deactivating themselves
         if ($user->id === $request->user()->id) {
             return response()->json([
-                'message' => 'You cannot delete your own account',
+                'message' => 'You cannot deactivate your own account',
             ], 403);
         }
 
-        $user->delete();
+        $user->active = !$user->active;
+        $user->save();
 
         return response()->json([
-            'message' => 'User deleted successfully',
+            'user' => $user,
+            'message' => $user->active ? 'User activated successfully' : 'User deactivated successfully',
         ]);
     }
 
@@ -173,6 +216,11 @@ class AuthController extends Controller
             'email' => 'required|string|email|max:255|unique:users,email,' . $user->id,
             'phone_number' => 'nullable|string|max:255',
             'address' => 'nullable|string',
+            'address_line_1' => 'nullable|string|max:255',
+            'address_line_2' => 'nullable|string|max:255',
+            'city' => 'nullable|string|max:255',
+            'state' => 'nullable|string|max:255',
+            'zip' => 'nullable|string|max:255',
             'first_name' => 'nullable|string|max:255',
             'last_name' => 'nullable|string|max:255',
             'preferred_name' => 'nullable|string|max:255',
@@ -182,6 +230,11 @@ class AuthController extends Controller
             'email',
             'phone_number',
             'address',
+            'address_line_1',
+            'address_line_2',
+            'city',
+            'state',
+            'zip',
             'first_name',
             'last_name',
             'preferred_name',
