@@ -9,6 +9,9 @@ use App\Models\PartsRequestLocation;
 use App\Models\PartsRequestStatus;
 use App\Services\GeofenceService;
 use App\Services\SlackNotificationService;
+use App\Services\RequestWorkflowService;
+use App\Services\RunSchedulerService;
+use App\Services\InventoryIntegrationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -18,11 +21,22 @@ class PartsRequestController extends Controller
 {
     protected $geofenceService;
     protected $slackService;
+    protected $workflowService;
+    protected $schedulerService;
+    protected $inventoryService;
 
-    public function __construct(GeofenceService $geofenceService, SlackNotificationService $slackService)
-    {
+    public function __construct(
+        GeofenceService $geofenceService,
+        SlackNotificationService $slackService,
+        RequestWorkflowService $workflowService,
+        RunSchedulerService $schedulerService,
+        InventoryIntegrationService $inventoryService
+    ) {
         $this->geofenceService = $geofenceService;
         $this->slackService = $slackService;
+        $this->workflowService = $workflowService;
+        $this->schedulerService = $schedulerService;
+        $this->inventoryService = $inventoryService;
     }
 
     /**
@@ -599,5 +613,343 @@ class PartsRequestController extends Controller
             'statuses' => \App\Models\PartsRequestStatus::all(),
             'urgency_levels' => \App\Models\UrgencyLevel::all(),
         ]);
+    }
+
+    // ==========================================
+    // PARTS RUNNER ROUTING ENDPOINTS (NEW)
+    // ==========================================
+
+    /**
+     * POST /parts-requests/{id}/actions/{action} - Execute action
+     */
+    public function executeAction(Request $request, int $id, string $action)
+    {
+        $partsRequest = PartsRequest::findOrFail($id);
+
+        $validated = $request->validate([
+            'note' => 'nullable|string',
+            'photo' => 'nullable|file|image|max:10240',
+            'lat' => 'nullable|numeric',
+            'lng' => 'nullable|numeric',
+        ]);
+
+        try {
+            $this->workflowService->executeAction(
+                $partsRequest,
+                $action,
+                $validated,
+                $request->user()
+            );
+
+            return response()->json([
+                'message' => 'Action executed successfully',
+                'data' => $partsRequest->fresh(['status', 'runInstance', 'pickupStop', 'dropoffStop']),
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Failed to execute action',
+                'error' => $e->getMessage(),
+            ], 400);
+        }
+    }
+
+    /**
+     * GET /parts-requests/{id}/available-actions - Get actions for current user/status
+     */
+    public function availableActions(Request $request, int $id)
+    {
+        $partsRequest = PartsRequest::findOrFail($id);
+
+        $actions = $this->workflowService->getAvailableActions(
+            $partsRequest,
+            $request->user()
+        );
+
+        return response()->json([
+            'data' => $actions,
+        ]);
+    }
+
+    /**
+     * POST /parts-requests/{id}/assign-to-run - Manual run assignment (dispatcher only)
+     */
+    public function assignToRun(Request $request, int $id)
+    {
+        $partsRequest = PartsRequest::findOrFail($id);
+
+        Gate::authorize('assign', $partsRequest);
+
+        $validated = $request->validate([
+            'run_instance_id' => 'required|exists:run_instances,id',
+            'pickup_stop_id' => 'required|exists:route_stops,id',
+            'dropoff_stop_id' => 'required|exists:route_stops,id',
+            'override_reason' => 'nullable|string',
+        ]);
+
+        try {
+            // If override_reason provided, mark as admin override
+            if (!empty($validated['override_reason'])) {
+                $partsRequest->update([
+                    'override_run_instance_id' => $validated['run_instance_id'],
+                    'override_reason' => $validated['override_reason'],
+                    'override_by_user_id' => $request->user()->id,
+                    'override_at' => now(),
+                ]);
+            }
+
+            $this->schedulerService->assignRequestToRun(
+                $partsRequest,
+                $validated['run_instance_id'],
+                $validated['pickup_stop_id'],
+                $validated['dropoff_stop_id']
+            );
+
+            return response()->json([
+                'message' => 'Request assigned to run successfully',
+                'data' => $partsRequest->fresh(['runInstance', 'pickupStop', 'dropoffStop']),
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Failed to assign to run',
+                'error' => $e->getMessage(),
+            ], 400);
+        }
+    }
+
+    /**
+     * GET /parts-requests/{id}/segments - View child segments (multi-leg)
+     */
+    public function segments(int $id)
+    {
+        $partsRequest = PartsRequest::findOrFail($id);
+
+        $segments = $partsRequest->childSegments()
+            ->with([
+                'status',
+                'originLocation',
+                'receivingLocation',
+                'runInstance.route',
+                'pickupStop',
+                'dropoffStop',
+            ])
+            ->get();
+
+        return response()->json([
+            'data' => $segments,
+        ]);
+    }
+
+    /**
+     * GET /parts-requests/needs-staging - Shop staff view
+     */
+    public function needsStaging(Request $request)
+    {
+        $locationId = $request->input('location_id');
+
+        $query = PartsRequest::with([
+            'requestType',
+            'status',
+            'urgency',
+            'originLocation',
+            'receivingLocation',
+            'requestedBy',
+        ])
+        ->whereHas('requestType', function ($q) {
+            $q->where('name', 'transfer');
+        })
+        ->whereHas('status', function ($q) {
+            $q->where('name', 'new');
+        });
+
+        if ($locationId) {
+            $query->where('origin_location_id', $locationId);
+        }
+
+        $requests = $query->orderBy('urgency_id', 'desc')
+            ->orderBy('requested_at', 'asc')
+            ->get();
+
+        return response()->json([
+            'data' => $requests,
+        ]);
+    }
+
+    /**
+     * GET /parts-requests/feed - Feed dashboard with advanced filters
+     */
+    public function feed(Request $request)
+    {
+        $query = PartsRequest::with([
+            'requestType',
+            'status',
+            'urgency',
+            'originLocation',
+            'receivingLocation',
+            'requestedBy',
+            'assignedRunner',
+            'runInstance.route',
+            'pickupStop',
+            'dropoffStop',
+        ])->parentsOnly(); // Don't show segments in main feed
+
+        // Advanced filters
+        if ($request->has('status_ids')) {
+            $query->whereIn('status_id', $request->input('status_ids'));
+        }
+
+        if ($request->has('type_ids')) {
+            $query->whereIn('request_type_id', $request->input('type_ids'));
+        }
+
+        if ($request->has('urgency_ids')) {
+            $query->whereIn('urgency_id', $request->input('urgency_ids'));
+        }
+
+        if ($request->has('origin_location_id')) {
+            $query->where('origin_location_id', $request->input('origin_location_id'));
+        }
+
+        if ($request->has('receiving_location_id')) {
+            $query->where('receiving_location_id', $request->input('receiving_location_id'));
+        }
+
+        if ($request->has('run_id')) {
+            $query->where('run_instance_id', $request->input('run_id'));
+        }
+
+        if ($request->has('scheduled_date')) {
+            $query->scheduledFor($request->input('scheduled_date'));
+        }
+
+        if ($request->boolean('show_future_scheduled')) {
+            // Include future scheduled (dispatcher view)
+            $query->orWhere->futureScheduled();
+        } else {
+            // Hide future scheduled (runner view)
+            $query->visibleToRunner();
+        }
+
+        if ($request->boolean('show_archived')) {
+            $query->archived();
+        } else {
+            $query->notArchived();
+        }
+
+        if ($request->has('search')) {
+            $search = $request->input('search');
+            $query->where(function ($q) use ($search) {
+                $q->where('reference_number', 'like', "%{$search}%")
+                  ->orWhere('details', 'like', "%{$search}%")
+                  ->orWhere('vendor_name', 'like', "%{$search}%")
+                  ->orWhere('customer_name', 'like', "%{$search}%");
+            });
+        }
+
+        $perPage = $request->get('per_page', 20);
+        return response()->json($query->orderBy('requested_at', 'desc')->paginate($perPage));
+    }
+
+    /**
+     * POST /parts-requests/{id}/link-item - Link to inventory item
+     */
+    public function linkItem(Request $request, int $id)
+    {
+        $partsRequest = PartsRequest::findOrFail($id);
+
+        $validated = $request->validate([
+            'item_id' => 'required|exists:items,id',
+        ]);
+
+        try {
+            $this->inventoryService->linkRequestToItem(
+                $partsRequest,
+                $validated['item_id']
+            );
+
+            return response()->json([
+                'message' => 'Item linked successfully',
+                'data' => $partsRequest->fresh('item'),
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Failed to link item',
+                'error' => $e->getMessage(),
+            ], 400);
+        }
+    }
+
+    /**
+     * GET /parts-requests/scheduled - View future scheduled requests (dispatcher only)
+     */
+    public function scheduled(Request $request)
+    {
+        $query = PartsRequest::with([
+            'requestType',
+            'status',
+            'urgency',
+            'originLocation',
+            'receivingLocation',
+            'requestedBy',
+        ])->futureScheduled();
+
+        // Group by scheduled date
+        $requests = $query->orderBy('scheduled_for_date', 'asc')->get();
+
+        $grouped = $requests->groupBy(function ($request) {
+            return $request->scheduled_for_date->toDateString();
+        });
+
+        return response()->json([
+            'data' => $grouped,
+        ]);
+    }
+
+    /**
+     * POST /parts-requests/bulk-schedule - Create multiple requests for future dates
+     */
+    public function bulkSchedule(Request $request)
+    {
+        Gate::authorize('create', PartsRequest::class);
+
+        $validated = $request->validate([
+            'requests' => 'required|array|min:1',
+            'requests.*.scheduled_for_date' => 'required|date|after_or_equal:today',
+            'requests.*.request_type_id' => 'required|exists:parts_request_types,id',
+            'requests.*.origin_location_id' => 'required|exists:service_locations,id',
+            'requests.*.receiving_location_id' => 'required|exists:service_locations,id',
+            'requests.*.urgency_id' => 'required|exists:urgency_levels,id',
+            'requests.*.details' => 'required|string',
+        ]);
+
+        DB::beginTransaction();
+        try {
+            $created = [];
+            $newStatus = PartsRequestStatus::where('name', 'new')->first();
+
+            foreach ($validated['requests'] as $requestData) {
+                $requestData['reference_number'] = PartsRequest::generateReferenceNumber();
+                $requestData['status_id'] = $newStatus->id;
+                $requestData['requested_at'] = now();
+                $requestData['requested_by_user_id'] = $request->user()->id;
+                $requestData['created_by'] = $request->user()->id;
+                $requestData['updated_by'] = $request->user()->id;
+
+                $partsRequest = PartsRequest::create($requestData);
+                $created[] = $partsRequest;
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'message' => count($created) . ' requests scheduled successfully',
+                'data' => $created,
+            ], 201);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'message' => 'Failed to schedule requests',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
     }
 }

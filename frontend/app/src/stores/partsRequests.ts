@@ -27,6 +27,26 @@ export interface PartsRequest {
   slack_notify_delivery: boolean;
   created_at: string;
   updated_at: string;
+  // Parts Runner routing fields
+  run_instance_id: number | null;
+  run_instance?: any;
+  pickup_stop_id: number | null;
+  pickup_stop?: any;
+  dropoff_stop_id: number | null;
+  dropoff_stop?: any;
+  parent_request_id: number | null;
+  segment_order: number | null;
+  is_segment: boolean;
+  item_id: number | null;
+  item?: any;
+  scheduled_for_date: string | null;
+  not_before_datetime: string | null;
+  override_run_instance_id: number | null;
+  override_reason: string | null;
+  override_by_user_id: number | null;
+  override_at: string | null;
+  is_archived: boolean;
+  archived_at: string | null;
 }
 
 export interface PartsRequestEvent {
@@ -300,6 +320,181 @@ export const usePartsRequestsStore = defineStore('partsRequests', {
           message: error.response?.data?.message || 'Failed to delete request',
         });
         throw error;
+      }
+    },
+
+    // ==========================================
+    // PARTS RUNNER ROUTING ACTIONS (NEW)
+    // ==========================================
+
+    async executeAction(requestId: number, action: string, data: any) {
+      this.loading = true;
+      try {
+        const response = await api.post(`/parts-requests/${requestId}/actions/${action}`, data);
+        Notify.create({
+          type: 'positive',
+          message: response.data.message || 'Action executed successfully',
+        });
+        if (this.currentRequest?.id === requestId) {
+          this.currentRequest = response.data.data;
+        }
+        return response.data.data;
+      } catch (error: any) {
+        Notify.create({
+          type: 'negative',
+          message: error.response?.data?.message || 'Failed to execute action',
+        });
+        throw error;
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    async fetchAvailableActions(requestId: number) {
+      try {
+        const response = await api.get(`/parts-requests/${requestId}/available-actions`);
+        return response.data.data;
+      } catch (error: any) {
+        console.error('Failed to load available actions', error);
+        return [];
+      }
+    },
+
+    async assignToRun(requestId: number, runId: number, pickupStopId: number, dropoffStopId: number, overrideReason?: string) {
+      this.loading = true;
+      try {
+        const response = await api.post(`/parts-requests/${requestId}/assign-to-run`, {
+          run_instance_id: runId,
+          pickup_stop_id: pickupStopId,
+          dropoff_stop_id: dropoffStopId,
+          override_reason: overrideReason,
+        });
+        Notify.create({
+          type: 'positive',
+          message: response.data.message || 'Assigned to run successfully',
+        });
+        if (this.currentRequest?.id === requestId) {
+          this.currentRequest = response.data.data;
+        }
+        return response.data.data;
+      } catch (error: any) {
+        Notify.create({
+          type: 'negative',
+          message: error.response?.data?.message || 'Failed to assign to run',
+        });
+        throw error;
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    async fetchSegments(requestId: number) {
+      try {
+        const response = await api.get(`/parts-requests/${requestId}/segments`);
+        return response.data.data;
+      } catch (error: any) {
+        Notify.create({
+          type: 'negative',
+          message: error.response?.data?.message || 'Failed to load segments',
+        });
+        throw error;
+      }
+    },
+
+    async fetchNeedsStaging(locationId?: number) {
+      this.loading = true;
+      try {
+        const params = locationId ? { location_id: locationId } : {};
+        const response = await api.get('/parts-requests/needs-staging', { params });
+        return response.data.data;
+      } catch (error: any) {
+        Notify.create({
+          type: 'negative',
+          message: error.response?.data?.message || 'Failed to load staging requests',
+        });
+        throw error;
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    async fetchFeed(filters: any = {}) {
+      this.loading = true;
+      try {
+        const response = await api.get('/parts-requests/feed', { params: filters });
+        this.requests = response.data.data;
+        return response.data;
+      } catch (error: any) {
+        Notify.create({
+          type: 'negative',
+          message: error.response?.data?.message || 'Failed to load feed',
+        });
+        throw error;
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    async linkItem(requestId: number, itemId: number) {
+      this.loading = true;
+      try {
+        const response = await api.post(`/parts-requests/${requestId}/link-item`, {
+          item_id: itemId,
+        });
+        Notify.create({
+          type: 'positive',
+          message: response.data.message || 'Item linked successfully',
+        });
+        if (this.currentRequest?.id === requestId) {
+          this.currentRequest = response.data.data;
+        }
+        return response.data.data;
+      } catch (error: any) {
+        Notify.create({
+          type: 'negative',
+          message: error.response?.data?.message || 'Failed to link item',
+        });
+        throw error;
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    async fetchScheduled() {
+      this.loading = true;
+      try {
+        const response = await api.get('/parts-requests/scheduled');
+        return response.data.data;
+      } catch (error: any) {
+        Notify.create({
+          type: 'negative',
+          message: error.response?.data?.message || 'Failed to load scheduled requests',
+        });
+        throw error;
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    async bulkSchedule(requests: any[]) {
+      this.loading = true;
+      try {
+        const response = await api.post('/parts-requests/bulk-schedule', {
+          requests,
+        });
+        Notify.create({
+          type: 'positive',
+          message: response.data.message || 'Requests scheduled successfully',
+        });
+        return response.data.data;
+      } catch (error: any) {
+        Notify.create({
+          type: 'negative',
+          message: error.response?.data?.message || 'Failed to schedule requests',
+        });
+        throw error;
+      } finally {
+        this.loading = false;
       }
     },
   },

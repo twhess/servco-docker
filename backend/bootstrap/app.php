@@ -3,6 +3,7 @@
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Console\Scheduling\Schedule;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -13,6 +14,23 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         //
+    })
+    ->withSchedule(function (Schedule $schedule): void {
+        // Process scheduled requests daily at midnight
+        $schedule->job(new \App\Jobs\ProcessScheduledRequestsJob())
+            ->dailyAt('00:00')
+            ->name('process-scheduled-requests')
+            ->withoutOverlapping()
+            ->onOneServer();
+
+        // Rebuild route graph cache weekly on Sunday at 2 AM
+        $schedule->job(new \App\Jobs\RebuildRouteGraphCacheJob())
+            ->weekly()
+            ->sundays()
+            ->at('02:00')
+            ->name('rebuild-route-graph-cache')
+            ->withoutOverlapping()
+            ->onOneServer();
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

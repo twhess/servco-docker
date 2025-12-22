@@ -22,6 +22,9 @@ const routes: RouteRecordRaw[] = [
       { path: 'locations/:id', component: () => import('pages/LocationDetailPage.vue') },
       { path: 'parts-requests', component: () => import('pages/PartsRequestsPage.vue') },
       { path: 'runner-dashboard', component: () => import('pages/RunnerDashboardPage.vue') },
+      { path: 'routes', component: () => import('pages/RoutesPage.vue') },
+      { path: 'routes/:id', component: () => import('pages/RouteDetailPage.vue') },
+      { path: 'shop/staging', component: () => import('pages/ShopTransferStagingPage.vue') },
     ],
   },
 

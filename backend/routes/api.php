@@ -5,6 +5,9 @@ use App\Http\Controllers\AuditLogController;
 use App\Http\Controllers\ServiceLocationController;
 use App\Http\Controllers\PartsRequestController;
 use App\Http\Controllers\RoleController;
+use App\Http\Controllers\RouteController;
+use App\Http\Controllers\RunInstanceController;
+use App\Http\Controllers\ItemController;
 
 Route::get('/health', function () {
     return response()->json(['ok' => true]);
@@ -85,4 +88,63 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/audit-logs/statistics', [AuditLogController::class, 'statistics']);
     Route::get('/audit-logs/user/{userId}', [AuditLogController::class, 'userActivity']);
     Route::get('/audit-logs/{modelType}/{modelId}', [AuditLogController::class, 'show']);
+
+    // ==========================================
+    // PARTS RUNNER ROUTING ROUTES (NEW)
+    // ==========================================
+
+    // Routes Management
+    Route::get('/routes', [RouteController::class, 'index']);
+    Route::get('/routes/{id}', [RouteController::class, 'show']);
+    Route::post('/routes', [RouteController::class, 'store']);
+    Route::put('/routes/{id}', [RouteController::class, 'update']);
+    Route::delete('/routes/{id}', [RouteController::class, 'destroy']);
+    Route::post('/routes/{id}/activate', [RouteController::class, 'activate']);
+
+    // Route Stops Management
+    Route::post('/routes/{id}/stops', [RouteController::class, 'addStop']);
+    Route::put('/routes/{id}/stops/{stopId}', [RouteController::class, 'updateStop']);
+    Route::delete('/routes/{id}/stops/{stopId}', [RouteController::class, 'removeStop']);
+    Route::post('/routes/{id}/stops/reorder', [RouteController::class, 'reorderStops']);
+
+    // Route Schedules Management
+    Route::post('/routes/{id}/schedules', [RouteController::class, 'addSchedule']);
+    Route::delete('/routes/{id}/schedules/{scheduleId}', [RouteController::class, 'removeSchedule']);
+
+    // Route Graph & Pathfinding
+    Route::post('/routes/rebuild-cache', [RouteController::class, 'rebuildCache']);
+    Route::get('/routes/path', [RouteController::class, 'findPath']);
+
+    // Run Instances
+    Route::get('/runs', [RunInstanceController::class, 'index']);
+    Route::get('/runs/my-runs', [RunInstanceController::class, 'myRuns']);
+    Route::get('/runs/{id}', [RunInstanceController::class, 'show']);
+    Route::post('/runs/{id}/assign', [RunInstanceController::class, 'assign']);
+    Route::post('/runs/{id}/start', [RunInstanceController::class, 'start']);
+    Route::post('/runs/{id}/complete', [RunInstanceController::class, 'complete']);
+    Route::put('/runs/{id}/current-stop', [RunInstanceController::class, 'updateCurrentStop']);
+
+    // Run Stop Tracking
+    Route::post('/runs/{id}/stops/{stopId}/arrive', [RunInstanceController::class, 'arriveAtStop']);
+    Route::post('/runs/{id}/stops/{stopId}/depart', [RunInstanceController::class, 'departFromStop']);
+
+    // Run Notes
+    Route::post('/runs/{id}/notes', [RunInstanceController::class, 'addNote']);
+    Route::get('/runs/{id}/notes', [RunInstanceController::class, 'getNotes']);
+
+    // Parts Requests - Enhanced Routing Endpoints
+    Route::post('/parts-requests/{id}/actions/{action}', [PartsRequestController::class, 'executeAction']);
+    Route::get('/parts-requests/{id}/available-actions', [PartsRequestController::class, 'availableActions']);
+    Route::post('/parts-requests/{id}/assign-to-run', [PartsRequestController::class, 'assignToRun']);
+    Route::get('/parts-requests/{id}/segments', [PartsRequestController::class, 'segments']);
+    Route::get('/parts-requests/needs-staging', [PartsRequestController::class, 'needsStaging']);
+    Route::get('/parts-requests/feed', [PartsRequestController::class, 'feed']);
+    Route::post('/parts-requests/{id}/link-item', [PartsRequestController::class, 'linkItem']);
+    Route::get('/parts-requests/scheduled', [PartsRequestController::class, 'scheduled']);
+    Route::post('/parts-requests/bulk-schedule', [PartsRequestController::class, 'bulkSchedule']);
+
+    // Inventory Items - QR Scanning & Movement Tracking
+    Route::get('/items/scan/{qrCode}', [ItemController::class, 'scan']);
+    Route::get('/items/{id}/movement-history', [ItemController::class, 'movementHistory']);
+    Route::get('/items/{id}/current-request', [ItemController::class, 'currentRequest']);
 });

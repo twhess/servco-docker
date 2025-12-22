@@ -44,6 +44,22 @@ class PartsRequest extends Model
         'assigned_at',
         'last_modified_by_user_id',
         'last_modified_at',
+        // Parts Runner routing fields
+        'run_instance_id',
+        'pickup_stop_id',
+        'dropoff_stop_id',
+        'parent_request_id',
+        'segment_order',
+        'is_segment',
+        'item_id',
+        'scheduled_for_date',
+        'not_before_datetime',
+        'override_run_instance_id',
+        'override_reason',
+        'override_by_user_id',
+        'override_at',
+        'is_archived',
+        'archived_at',
     ];
 
     protected $casts = [
@@ -57,6 +73,14 @@ class PartsRequest extends Model
         'pickup_run' => 'boolean',
         'slack_notify_pickup' => 'boolean',
         'slack_notify_delivery' => 'boolean',
+        // Parts Runner routing casts
+        'segment_order' => 'integer',
+        'is_segment' => 'boolean',
+        'scheduled_for_date' => 'date',
+        'not_before_datetime' => 'datetime',
+        'override_at' => 'datetime',
+        'is_archived' => 'boolean',
+        'archived_at' => 'datetime',
     ];
 
     // Relationships
@@ -126,6 +150,70 @@ class PartsRequest extends Model
         return $this->hasMany(PartsRequestLocation::class)->orderBy('captured_at', 'desc');
     }
 
+    /**
+     * Run instance this request is assigned to
+     */
+    public function runInstance(): BelongsTo
+    {
+        return $this->belongsTo(RunInstance::class, 'run_instance_id');
+    }
+
+    /**
+     * Override run instance (admin-selected)
+     */
+    public function overrideRunInstance(): BelongsTo
+    {
+        return $this->belongsTo(RunInstance::class, 'override_run_instance_id');
+    }
+
+    /**
+     * Pickup stop on the route
+     */
+    public function pickupStop(): BelongsTo
+    {
+        return $this->belongsTo(RouteStop::class, 'pickup_stop_id');
+    }
+
+    /**
+     * Dropoff stop on the route
+     */
+    public function dropoffStop(): BelongsTo
+    {
+        return $this->belongsTo(RouteStop::class, 'dropoff_stop_id');
+    }
+
+    /**
+     * Parent request (for multi-leg segments)
+     */
+    public function parentRequest(): BelongsTo
+    {
+        return $this->belongsTo(PartsRequest::class, 'parent_request_id');
+    }
+
+    /**
+     * Child segments (for multi-leg routing)
+     */
+    public function childSegments(): HasMany
+    {
+        return $this->hasMany(PartsRequest::class, 'parent_request_id')->orderBy('segment_order');
+    }
+
+    /**
+     * Linked inventory item (optional)
+     */
+    public function item(): BelongsTo
+    {
+        return $this->belongsTo(Item::class, 'item_id');
+    }
+
+    /**
+     * User who overrode auto-assignment
+     */
+    public function overrideBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'override_by_user_id');
+    }
+
     // Scopes
 
     public function scopeAssignedTo($query, $userId)
@@ -157,6 +245,81 @@ class PartsRequest extends Model
         return $query->whereHas('status', function($q) {
             $q->whereNotIn('name', ['delivered', 'canceled']);
         });
+    }
+
+    /**
+     * Scope to requests scheduled for a specific date
+     */
+    public function scopeScheduledFor($query, $date)
+    {
+        return $query->whereDate('scheduled_for_date', $date);
+    }
+
+    /**
+     * Scope to requests scheduled for today
+     */
+    public function scopeScheduledToday($query)
+    {
+        return $query->whereDate('scheduled_for_date', today());
+    }
+
+    /**
+     * Scope to requests visible to runners (today or past, not future scheduled)
+     */
+    public function scopeVisibleToRunner($query)
+    {
+        return $query->where(function($q) {
+            $q->whereNull('scheduled_for_date')
+              ->orWhereDate('scheduled_for_date', '<=', today());
+        });
+    }
+
+    /**
+     * Scope to future scheduled requests (dispatcher view only)
+     */
+    public function scopeFutureScheduled($query)
+    {
+        return $query->whereDate('scheduled_for_date', '>', today());
+    }
+
+    /**
+     * Scope to non-archived requests
+     */
+    public function scopeNotArchived($query)
+    {
+        return $query->where('is_archived', false);
+    }
+
+    /**
+     * Scope to archived requests
+     */
+    public function scopeArchived($query)
+    {
+        return $query->where('is_archived', true);
+    }
+
+    /**
+     * Scope to parent requests only (not segments)
+     */
+    public function scopeParentsOnly($query)
+    {
+        return $query->where('is_segment', false);
+    }
+
+    /**
+     * Scope to segment requests only
+     */
+    public function scopeSegmentsOnly($query)
+    {
+        return $query->where('is_segment', true);
+    }
+
+    /**
+     * Scope to requests assigned to a specific run
+     */
+    public function scopeForRun($query, int $runId)
+    {
+        return $query->where('run_instance_id', $runId);
     }
 
     // Helper Methods
@@ -234,5 +397,128 @@ class PartsRequest extends Model
         $sequence = $lastRequest ? ((int)substr($lastRequest->reference_number, -4)) + 1 : 1;
 
         return 'PR-' . $date . '-' . str_pad($sequence, 4, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * Check if this is a multi-leg request (has child segments)
+     */
+    public function isMultiLeg(): bool
+    {
+        return $this->childSegments()->exists();
+    }
+
+    /**
+     * Check if this is a segment (part of multi-leg request)
+     */
+    public function isSegment(): bool
+    {
+        return $this->is_segment;
+    }
+
+    /**
+     * Get root request (parent if segment, self if not)
+     */
+    public function getRootRequest(): PartsRequest
+    {
+        return $this->isSegment() ? $this->parentRequest : $this;
+    }
+
+    /**
+     * Check if transfer type request needs staging
+     */
+    public function requiresStaging(): bool
+    {
+        if ($this->requestType->name !== 'transfer') {
+            return false;
+        }
+
+        // Check if status indicates not yet staged
+        return !in_array($this->status->name ?? '', ['ready_to_transfer', 'picked_up', 'delivered']);
+    }
+
+    /**
+     * Get available actions for this request based on current state and user
+     */
+    public function availableActions(User $user): \Illuminate\Support\Collection
+    {
+        $userRole = $this->determineUserRole($user);
+
+        return PartsRequestAction::active()
+            ->forRequestType($this->request_type_id)
+            ->fromStatus($this->status_id)
+            ->forRole($userRole)
+            ->ordered()
+            ->get();
+    }
+
+    /**
+     * Determine user's role for action permissions
+     */
+    private function determineUserRole(User $user): string
+    {
+        if ($user->hasPermission('parts_requests.assign_to_run')) {
+            return 'dispatcher';
+        }
+
+        if ($user->hasPermission('parts_requests.pickup')) {
+            return 'runner';
+        }
+
+        if ($user->hasPermission('parts_requests.stage_transfer')) {
+            return 'shop_staff';
+        }
+
+        return 'shop_staff'; // Default fallback
+    }
+
+    /**
+     * Check if this request is scheduled for a future date
+     */
+    public function isScheduledForFuture(): bool
+    {
+        return $this->scheduled_for_date && $this->scheduled_for_date->gt(today());
+    }
+
+    /**
+     * Check if this request is visible today (scheduled for today or past, or not scheduled)
+     */
+    public function isVisibleToday(): bool
+    {
+        return !$this->scheduled_for_date || $this->scheduled_for_date->lte(today());
+    }
+
+    /**
+     * Create item movement record when picked up or delivered
+     * Called from RequestWorkflowService after status changes
+     */
+    public function createItemMovement(string $stage, int $fromLocationId, int $toLocationId, User $user): ?ItemMovement
+    {
+        if (!$this->item_id) {
+            return null;
+        }
+
+        // Create ItemMovement record via InventoryIntegrationService
+        // This is placeholder - actual implementation in service layer
+        return null;
+    }
+
+    /**
+     * Check if admin has overridden auto-assignment
+     */
+    public function hasOverride(): bool
+    {
+        return !is_null($this->override_run_instance_id);
+    }
+
+    /**
+     * Get effective run instance (override if exists, otherwise assigned)
+     */
+    public function getEffectiveRunInstance(): ?RunInstance
+    {
+        if ($this->hasOverride()) {
+            return $this->overrideRunInstance;
+        }
+
+        return $this->runInstance;
     }
 }
