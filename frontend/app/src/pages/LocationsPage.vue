@@ -352,6 +352,76 @@
               rows="3"
             />
 
+            <!-- Color Settings -->
+            <div v-if="['fixed_shop', 'mobile_service_truck', 'parts_runner_vehicle'].includes(locationForm.location_type || '')">
+              <div class="text-subtitle2 q-mb-sm">Display Colors</div>
+              <div class="row q-col-gutter-md">
+                <div class="col-12 col-sm-6">
+                  <div class="row items-center q-gutter-sm">
+                    <q-input
+                      v-model="locationForm.text_color"
+                      label="Text Color"
+                      outlined
+                      class="col"
+                      placeholder="#FFFFFF"
+                    >
+                      <template v-slot:append>
+                        <q-icon name="colorize" class="cursor-pointer">
+                          <q-popup-proxy cover transition-show="scale" transition-hide="scale">
+                            <q-color
+                              v-model="locationForm.text_color"
+                              format-model="hex"
+                            />
+                          </q-popup-proxy>
+                        </q-icon>
+                      </template>
+                    </q-input>
+                    <div
+                      v-if="locationForm.text_color"
+                      class="color-preview"
+                      :style="{ backgroundColor: locationForm.text_color }"
+                    />
+                  </div>
+                </div>
+                <div class="col-12 col-sm-6">
+                  <div class="row items-center q-gutter-sm">
+                    <q-input
+                      v-model="locationForm.background_color"
+                      label="Background Color"
+                      outlined
+                      class="col"
+                      placeholder="#1976D2"
+                    >
+                      <template v-slot:append>
+                        <q-icon name="colorize" class="cursor-pointer">
+                          <q-popup-proxy cover transition-show="scale" transition-hide="scale">
+                            <q-color
+                              v-model="locationForm.background_color"
+                              format-model="hex"
+                            />
+                          </q-popup-proxy>
+                        </q-icon>
+                      </template>
+                    </q-input>
+                    <div
+                      v-if="locationForm.background_color"
+                      class="color-preview"
+                      :style="{ backgroundColor: locationForm.background_color }"
+                    />
+                  </div>
+                </div>
+              </div>
+              <div class="q-mt-md">
+                <div class="text-caption text-grey-7 q-mb-xs">Preview:</div>
+                <q-btn
+                  :label="locationForm.name || 'Location Name'"
+                  :style="getLocationButtonStyle(locationForm)"
+                  no-caps
+                  unelevated
+                />
+              </div>
+            </div>
+
             <q-toggle
               v-model="locationForm.is_active"
               label="Active"
@@ -420,6 +490,8 @@ const locationForm = ref<Partial<ServiceLocation>>({
   postal_code: '',
   notes: '',
   home_base_location_id: null,
+  text_color: null,
+  background_color: null,
 });
 
 const columns = [
@@ -485,6 +557,21 @@ function getStatusColor(status: string): string {
   return colors[status] || 'grey';
 }
 
+function getLocationButtonStyle(location: Partial<ServiceLocation>): Record<string, string> {
+  const style: Record<string, string> = {};
+  if (location.background_color) {
+    style.backgroundColor = location.background_color;
+  } else {
+    style.backgroundColor = '#1976D2'; // Default primary color
+  }
+  if (location.text_color) {
+    style.color = location.text_color;
+  } else {
+    style.color = '#FFFFFF'; // Default white text
+  }
+  return style;
+}
+
 function formatDateTime(dateString: string): string {
   const date = new Date(dateString);
   return date.toLocaleString();
@@ -545,6 +632,8 @@ function openCreateDialog() {
     postal_code: '',
     notes: '',
     home_base_location_id: null,
+    text_color: null,
+    background_color: null,
   };
   showLocationDialog.value = true;
 }
@@ -603,3 +692,13 @@ onMounted(() => {
   loadFixedShops();
 });
 </script>
+
+<style scoped lang="scss">
+.color-preview {
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  flex-shrink: 0;
+}
+</style>

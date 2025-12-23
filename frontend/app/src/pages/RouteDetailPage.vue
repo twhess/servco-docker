@@ -60,6 +60,7 @@
           <RouteStopManager
             :route-id="route.id"
             :initial-stops="route.stops || []"
+            :locations="locationsStore.locations"
             @stops-updated="refreshRoute"
           />
         </div>
@@ -76,31 +77,36 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useRoutesStore } from 'src/stores/routes'
+import { useLocationsStore } from 'src/stores/locations'
 import { useQuasar } from 'quasar'
 import RouteStopManager from 'src/components/RouteStopManager.vue'
 import RouteScheduleManager from 'src/components/RouteScheduleManager.vue'
 import type { Route } from 'src/types/routes'
 
-const route = useRoute()
+const vueRoute = useRoute()
 const routesStore = useRoutesStore()
+const locationsStore = useLocationsStore()
 const $q = useQuasar()
 
 const loading = ref(false)
-const routeData = ref<Route | null>(null)
+const route = ref<Route | null>(null)
 
-const routeId = computed(() => parseInt(route.params.id as string))
+const routeId = computed(() => parseInt(vueRoute.params.id as string))
 
 onMounted(async () => {
-  await loadRoute()
+  await Promise.all([
+    loadRoute(),
+    locationsStore.fetchLocations({ active: true })
+  ])
 })
 
 async function loadRoute() {
   loading.value = true
   try {
-    routeData.value = await routesStore.fetchRoute(routeId.value)
+    route.value = await routesStore.fetchRoute(routeId.value)
   } catch (error: any) {
     $q.notify({
       type: 'negative',

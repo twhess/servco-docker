@@ -121,17 +121,63 @@
         </q-icon>
       </template>
     </q-input>
+
+    <!-- DateTime Input -->
+    <q-input
+      v-else-if="type === 'datetime-local'"
+      :model-value="modelValue"
+      @update:model-value="handleInput"
+      @blur="handleBlur"
+      :label="label"
+      :hint="hint"
+      :error="!!error"
+      :error-message="error || undefined"
+      :readonly="readonly"
+      :disable="disable"
+      :required="required"
+      filled
+      stack-label
+      class="mobile-input"
+    >
+      <template v-slot:prepend>
+        <q-icon :name="icon || 'event'" class="cursor-pointer">
+          <q-popup-proxy ref="datePopupRef" cover transition-show="scale" transition-hide="scale">
+            <q-date
+              :model-value="getDatePart(modelValue)"
+              @update:model-value="handleDateChange"
+              mask="YYYY-MM-DD"
+            />
+          </q-popup-proxy>
+        </q-icon>
+      </template>
+      <template v-slot:append>
+        <q-icon name="access_time" class="cursor-pointer">
+          <q-popup-proxy ref="timePopupRef" cover transition-show="scale" transition-hide="scale">
+            <q-time
+              :model-value="getTimePart(modelValue)"
+              @update:model-value="handleTimeChange"
+              mask="HH:mm"
+            />
+          </q-popup-proxy>
+        </q-icon>
+      </template>
+    </q-input>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { ref } from 'vue';
+import type { QPopupProxy } from 'quasar';
+
+// Refs for popup proxies to auto-close after selection
+const datePopupRef = ref<QPopupProxy | null>(null);
+const timePopupRef = ref<QPopupProxy | null>(null);
 
 interface Props {
   name: string;
   modelValue: any;
   label: string;
-  type?: 'text' | 'email' | 'tel' | 'number' | 'password' | 'textarea' | 'date' | 'time';
+  type?: 'text' | 'email' | 'tel' | 'number' | 'password' | 'textarea' | 'date' | 'time' | 'datetime-local';
   hint?: string;
   error?: string | null;
   icon?: string;
@@ -177,6 +223,39 @@ const getInputMode = (): string => {
     default:
       return 'text';
   }
+};
+
+/**
+ * Helper functions for datetime-local input
+ */
+const getDatePart = (value: string | null): string => {
+  if (!value) return '';
+  // Handle both ISO format (2025-01-15T10:30:00) and datetime-local format (2025-01-15T10:30)
+  return value.split('T')[0] || '';
+};
+
+const getTimePart = (value: string | null): string => {
+  if (!value) return '';
+  const timePart = value.split('T')[1];
+  if (!timePart) return '';
+  // Return HH:mm format
+  return timePart.substring(0, 5);
+};
+
+const handleDateChange = (date: string | null) => {
+  if (!date) return;
+  const currentTime = getTimePart(props.modelValue) || '00:00';
+  emit('update:modelValue', `${date}T${currentTime}`);
+  // Auto-close the date popup after selection
+  datePopupRef.value?.hide();
+};
+
+const handleTimeChange = (time: string | null) => {
+  if (!time) return;
+  const currentDate = getDatePart(props.modelValue) || new Date().toISOString().split('T')[0];
+  emit('update:modelValue', `${currentDate}T${time}`);
+  // Auto-close the time popup after selection
+  timePopupRef.value?.hide();
 };
 </script>
 

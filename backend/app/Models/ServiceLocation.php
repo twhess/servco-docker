@@ -22,6 +22,8 @@ class ServiceLocation extends Model
         'is_active',
         'timezone',
         'notes',
+        'text_color',
+        'background_color',
         'address_line1',
         'address_line2',
         'city',

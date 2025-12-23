@@ -226,21 +226,28 @@ const stopTypes = [
   { label: 'Ad Hoc', value: 'AD_HOC' },
 ]
 
-const stopForm = ref({
+const stopForm = ref<{
+  stop_type: 'SHOP' | 'VENDOR_CLUSTER' | 'CUSTOMER' | 'AD_HOC'
+  location_id: number | null
+  stop_order: number
+  estimated_duration_minutes: number
+  notes: string
+  vendor_locations: Array<{
+    vendor_location_id: number
+    location_order: number
+    is_optional: boolean
+  }>
+}>({
   stop_type: 'SHOP',
   location_id: null,
   stop_order: 1,
   estimated_duration_minutes: 15,
   notes: '',
-  vendor_locations: [] as Array<{
-    vendor_location_id: number
-    location_order: number
-    is_optional: boolean
-  }>,
+  vendor_locations: [],
 })
 
 const vendorLocations = computed(() => {
-  return props.locations.filter(l => l.type === 'vendor')
+  return props.locations.filter(l => l.location_type === 'vendor')
 })
 
 const filteredLocations = ref([...props.locations])
@@ -334,7 +341,9 @@ async function onReorder() {
 
 async function refreshStops() {
   const route = await routesStore.fetchRoute(props.routeId)
-  stops.value = route.stops || []
+  if (route) {
+    stops.value = route.stops || []
+  }
 }
 
 function closeStopDialog() {

@@ -4,7 +4,8 @@
       "Bash(composer require:*)",
       "Bash(docker exec:*)",
       "Bash(php artisan:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(npm run build:*)"
     ]
   }
 }

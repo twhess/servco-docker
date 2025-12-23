@@ -11,6 +11,8 @@ export interface ServiceLocation {
   is_active: boolean;
   timezone: string | null;
   notes: string | null;
+  text_color: string | null;
+  background_color: string | null;
   address_line1: string | null;
   address_line2: string | null;
   city: string | null;

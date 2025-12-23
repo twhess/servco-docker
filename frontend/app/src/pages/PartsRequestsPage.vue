@@ -158,11 +158,6 @@
                 <q-icon name="warning" size="xs" />
                 {{ props.row.special_instructions }}
               </div>
-              <div v-if="props.row.pickup_run" class="q-mt-xs">
-                <q-chip dense size="sm" color="blue-grey" text-color="white">
-                  Pickup Run
-                </q-chip>
-              </div>
             </q-td>
           </template>
 
@@ -174,7 +169,7 @@
                 :color="getUrgencyColor(props.row.urgency.name)"
                 text-color="white"
               >
-                {{ props.row.urgency.name.toUpperCase() }}
+                {{ getUrgencyLabel(props.row.urgency.name) }}
               </q-chip>
             </q-td>
           </template>
@@ -293,32 +288,50 @@
       @load-draft="loadDraft"
       @discard-draft="clearDraft"
     >
-      <MobileSelect
-        name="request_type_id"
-        v-model="requestForm.request_type_id"
-        label="Request Type"
-        :options="lookups.request_types"
-        option-value="id"
-        option-label="name"
-        :error="getError('request_type_id')"
-        @update:model-value="updateField('request_type_id', $event)"
-        @blur="touchField('request_type_id')"
-        required
-        icon="category"
-      />
+      <!-- Request Type Buttons -->
+      <div class="col-12" style="grid-column: 1 / -1;">
+        <div class="text-subtitle2 q-mb-sm">Request Type <span class="text-negative">*</span></div>
+        <q-btn-toggle
+          v-model="requestForm.request_type_id"
+          spread
+          no-caps
+          toggle-color="primary"
+          :options="requestTypeButtons"
+          class="full-width"
+          @update:model-value="updateField('request_type_id', $event)"
+        />
+        <div v-if="getError('request_type_id')" class="text-negative text-caption q-mt-xs">
+          {{ getError('request_type_id') }}
+        </div>
+      </div>
 
+      <!-- Urgency Level -->
       <MobileSelect
         name="urgency_id"
         v-model="requestForm.urgency_id"
         label="Urgency Level"
-        :options="lookups.urgency_levels"
+        :options="formattedUrgencyLevels"
         option-value="id"
-        option-label="name"
+        option-label="label"
         :error="getError('urgency_id')"
         @update:model-value="updateField('urgency_id', $event)"
         @blur="touchField('urgency_id')"
         required
         icon="priority_high"
+        hint="Default: First Available Run"
+      />
+
+      <!-- Ready When DateTime Picker -->
+      <MobileFormField
+        name="not_before_datetime"
+        v-model="requestForm.not_before_datetime"
+        label="Ready When (Optional)"
+        type="datetime-local"
+        :error="getError('not_before_datetime')"
+        @update:model-value="updateField('not_before_datetime', $event)"
+        @blur="touchField('not_before_datetime')"
+        icon="schedule"
+        hint="Leave empty for next available run"
       />
 
       <!-- Section Divider -->
@@ -327,22 +340,39 @@
         <div class="text-subtitle1 text-weight-medium q-my-sm">Supplying Location</div>
       </div>
 
-      <MobileSelect
-        name="origin_location_id"
-        v-model="requestForm.origin_location_id"
-        label="Shop Location (Pickup)"
-        :options="locations"
-        option-value="id"
-        option-label="name"
-        :error="getError('origin_location_id')"
-        @update:model-value="updateField('origin_location_id', $event)"
-        @blur="touchField('origin_location_id')"
-        clearable
-        icon="store"
-        hint="Select if picking up from one of our shops"
-      />
+      <!-- Origin Shop Location Buttons (hidden for pickup - pickup is always from vendor) -->
+      <div v-if="!isPickupType" class="col-12" style="grid-column: 1 / -1;">
+        <div class="text-subtitle2 q-mb-sm">
+          <q-icon name="store" class="q-mr-xs" />
+          Pickup From Shop
+        </div>
+        <div class="row q-gutter-sm">
+          <q-btn
+            v-for="loc in availableOriginLocations"
+            :key="loc.id"
+            :label="loc.name"
+            :style="getLocationButtonStyle(loc, requestForm.origin_location_id === loc.id)"
+            @click="toggleOriginLocation(loc.id)"
+            no-caps
+            unelevated
+            size="sm"
+          />
+          <q-btn
+            v-if="requestForm.origin_location_id"
+            label="Clear"
+            color="grey-3"
+            text-color="grey-7"
+            @click="requestForm.origin_location_id = null; updateField('origin_location_id', null)"
+            no-caps
+            flat
+            size="sm"
+          />
+        </div>
+        <div class="text-caption text-grey-6 q-mt-xs">Select if picking up from one of our shops</div>
+      </div>
 
       <MobileFormField
+        v-if="((!requestForm.origin_location_id && !isTransferType) || isPickupType) && !isDeliveryType"
         name="vendor_name"
         v-model="requestForm.vendor_name"
         label="Vendor Name"
@@ -360,57 +390,75 @@
         <div class="text-subtitle1 text-weight-medium q-my-sm">Receiving Location</div>
       </div>
 
-      <MobileSelect
-        name="receiving_location_id"
-        v-model="requestForm.receiving_location_id"
-        label="Shop Location (Delivery)"
-        :options="locations"
-        option-value="id"
-        option-label="name"
-        :error="getError('receiving_location_id')"
-        @update:model-value="updateField('receiving_location_id', $event)"
-        @blur="touchField('receiving_location_id')"
-        clearable
-        icon="location_on"
-        hint="Select if delivering to one of our shops"
-      />
+      <!-- Receiving Shop Location Buttons (hidden for delivery - delivery is always to customer) -->
+      <div v-if="!isDeliveryType" class="col-12" style="grid-column: 1 / -1;">
+        <div class="text-subtitle2 q-mb-sm">
+          <q-icon name="location_on" class="q-mr-xs" />
+          Deliver To Shop
+        </div>
+        <div class="row q-gutter-sm">
+          <q-btn
+            v-for="loc in availableReceivingLocations"
+            :key="loc.id"
+            :label="loc.name"
+            :style="getLocationButtonStyle(loc, requestForm.receiving_location_id === loc.id)"
+            @click="toggleReceivingLocation(loc.id)"
+            no-caps
+            unelevated
+            size="sm"
+          />
+          <q-btn
+            v-if="requestForm.receiving_location_id"
+            label="Clear"
+            color="grey-3"
+            text-color="grey-7"
+            @click="requestForm.receiving_location_id = null; updateField('receiving_location_id', null)"
+            no-caps
+            flat
+            size="sm"
+          />
+        </div>
+        <div class="text-caption text-grey-6 q-mt-xs">Select if delivering to one of our shops</div>
+      </div>
 
-      <MobileFormField
-        name="customer_name"
-        v-model="requestForm.customer_name"
-        label="Customer Name"
-        type="text"
-        :error="getError('customer_name')"
-        @update:model-value="updateField('customer_name', $event)"
-        @blur="touchField('customer_name')"
-        icon="person"
-        hint="Enter customer name if delivering to customer"
-      />
+      <template v-if="(!requestForm.receiving_location_id && !isTransferType && !isPickupType) || isDeliveryType">
+        <MobileFormField
+          name="customer_name"
+          v-model="requestForm.customer_name"
+          label="Customer Name"
+          type="text"
+          :error="getError('customer_name')"
+          @update:model-value="updateField('customer_name', $event)"
+          @blur="touchField('customer_name')"
+          icon="person"
+          hint="Enter customer name if delivering to customer"
+        />
 
-      <MobileFormField
-        name="customer_address"
-        v-model="requestForm.customer_address"
-        label="Customer Address"
-        type="textarea"
-        :rows="2"
-        :error="getError('customer_address')"
-        @update:model-value="updateField('customer_address', $event)"
-        @blur="touchField('customer_address')"
-        icon="home"
-        hint="Full address for customer delivery"
-      />
+        <MobileFormField
+          name="customer_address"
+          v-model="requestForm.customer_address"
+          label="Customer Address"
+          type="textarea"
+          :rows="2"
+          :error="getError('customer_address')"
+          @update:model-value="updateField('customer_address', $event)"
+          @blur="touchField('customer_address')"
+          icon="home"
+          hint="Full address for customer delivery"
+        />
 
-      <MobileFormField
-        name="customer_phone"
-        v-model="requestForm.customer_phone"
-        label="Customer Phone"
-        type="tel"
-        :error="getError('customer_phone')"
-        @update:model-value="updateField('customer_phone', $event)"
-        @blur="touchField('customer_phone')"
-        icon="phone"
-        hint="Contact number for delivery"
-      />
+        <MobileFormField
+          name="customer_phone"
+          v-model="requestForm.customer_phone"
+          label="Customer Phone"
+          type="tel"
+          :error="getError('customer_phone')"
+          @update:model-value="updateField('customer_phone', $event)"
+          @blur="touchField('customer_phone')"
+          icon="phone"
+          hint="Contact number for delivery"
+        />
+      </template>
 
       <!-- Section Divider -->
       <div class="col-12" style="grid-column: 1 / -1;">
@@ -445,18 +493,6 @@
       <!-- Section Divider -->
       <div class="col-12" style="grid-column: 1 / -1;">
         <q-separator class="q-my-sm" />
-        <div class="text-subtitle2 q-my-sm">Options</div>
-      </div>
-
-      <div class="col-12" style="grid-column: 1 / -1;">
-        <q-toggle
-          v-model="requestForm.pickup_run"
-          label="This is a pickup run"
-        />
-      </div>
-
-      <!-- Section Divider -->
-      <div class="col-12" style="grid-column: 1 / -1;">
         <div class="text-subtitle2 q-my-sm">Slack Notifications</div>
       </div>
 
@@ -611,7 +647,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, reactive } from 'vue';
+import { ref, computed, onMounted, reactive, watch } from 'vue';
 import { usePartsRequestsStore, type PartsRequest, type PartsRequestEvent, type PartsRequestPhoto } from 'src/stores/partsRequests';
 import { useAuthStore } from 'src/stores/auth';
 import { api } from 'boot/axios';
@@ -663,6 +699,7 @@ const pagination = ref({
 const requestForm = reactive({
   request_type_id: null as number | null,
   urgency_id: null as number | null,
+  not_before_datetime: null as string | null,
   origin_location_id: null as number | null,
   vendor_name: '',
   receiving_location_id: null as number | null,
@@ -671,10 +708,132 @@ const requestForm = reactive({
   customer_phone: '',
   details: '',
   special_instructions: '',
-  pickup_run: false,
   slack_notify_pickup: false,
   slack_notify_delivery: false,
   slack_channel: '',
+});
+
+// Computed properties for button-based selection
+const requestTypeButtons = computed(() =>
+  lookups.value.request_types?.map((t: { id: number; name: string }) => ({
+    label: t.name.charAt(0).toUpperCase() + t.name.slice(1),
+    value: t.id,
+    icon: t.name === 'pickup' ? 'upload' : t.name === 'delivery' ? 'download' : 'swap_horiz'
+  })) || []
+);
+
+// Urgency level labels mapping
+const urgencyLabels: Record<string, string> = {
+  first_available: 'First Available Run',
+  today: 'Today',
+  saturday: 'Saturday',
+  next_business_day: 'Next Business Day',
+};
+
+// Format urgency levels with proper display labels
+const formattedUrgencyLevels = computed(() =>
+  lookups.value.urgency_levels?.map((u: { id: number; name: string }) => ({
+    id: u.id,
+    name: u.name,
+    label: urgencyLabels[u.name] || u.name.charAt(0).toUpperCase() + u.name.slice(1).replace(/_/g, ' ')
+  })) || []
+);
+
+// Filter locations to only show fixed shops
+const shopLocations = computed(() =>
+  locations.value.filter((loc: any) => loc.location_type === 'fixed_shop')
+);
+
+// Available origin locations (exclude receiving location)
+const availableOriginLocations = computed(() =>
+  shopLocations.value.filter((loc: any) => loc.id !== requestForm.receiving_location_id)
+);
+
+// Available receiving locations (exclude origin location)
+const availableReceivingLocations = computed(() =>
+  shopLocations.value.filter((loc: any) => loc.id !== requestForm.origin_location_id)
+);
+
+// Check if current request type is "transfer"
+const isTransferType = computed(() => getRequestTypeName(requestForm.request_type_id) === 'transfer');
+
+// Check if current request type is "pickup"
+const isPickupType = computed(() => getRequestTypeName(requestForm.request_type_id) === 'pickup');
+
+// Check if current request type is "delivery"
+const isDeliveryType = computed(() => getRequestTypeName(requestForm.request_type_id) === 'delivery');
+
+// Get request type name from ID
+function getRequestTypeName(typeId: number | null): string | null {
+  if (!typeId) return null;
+  const type = lookups.value.request_types?.find((t: { id: number; name: string }) => t.id === typeId);
+  return type?.name || null;
+}
+
+// Toggle functions for shop buttons
+function toggleOriginLocation(locId: number) {
+  requestForm.origin_location_id = requestForm.origin_location_id === locId ? null : locId;
+  updateField('origin_location_id', requestForm.origin_location_id);
+  // Clear vendor name when a shop is selected
+  if (requestForm.origin_location_id) {
+    requestForm.vendor_name = '';
+  }
+}
+
+function toggleReceivingLocation(locId: number) {
+  requestForm.receiving_location_id = requestForm.receiving_location_id === locId ? null : locId;
+  updateField('receiving_location_id', requestForm.receiving_location_id);
+  // Clear customer details when a shop is selected
+  if (requestForm.receiving_location_id) {
+    requestForm.customer_name = '';
+    requestForm.customer_address = '';
+    requestForm.customer_phone = '';
+  }
+}
+
+// Get button style for a location based on its colors and selection state
+function getLocationButtonStyle(location: any, isSelected: boolean): Record<string, string> {
+  const style: Record<string, string> = {};
+
+  if (isSelected) {
+    // When selected, use the location's colors (or defaults)
+    style.backgroundColor = location.background_color || '#1976D2';
+    style.color = location.text_color || '#FFFFFF';
+  } else {
+    // When not selected, use muted version or location colors at lower opacity
+    if (location.background_color) {
+      style.backgroundColor = location.background_color + '33'; // 20% opacity
+      style.color = location.background_color;
+      style.border = `1px solid ${location.background_color}`;
+    } else {
+      style.backgroundColor = '#E0E0E0';
+      style.color = '#424242';
+    }
+  }
+
+  return style;
+}
+
+// Watch for request type changes to set smart defaults
+watch(() => requestForm.request_type_id, (newTypeId) => {
+  const typeName = getRequestTypeName(newTypeId);
+  const userHomeLocationId = authStore.user?.home_location_id || null;
+
+  if (typeName === 'delivery') {
+    // For delivery: user's shop is the origin (pickup from), need to set receiving
+    requestForm.origin_location_id = userHomeLocationId;
+    requestForm.receiving_location_id = null;
+    // Clear vendor since we're picking up from our shop
+    requestForm.vendor_name = '';
+  } else if (typeName === 'pickup' || typeName === 'transfer') {
+    // For pickup/transfer: user's shop is the destination (deliver to)
+    requestForm.receiving_location_id = userHomeLocationId;
+    requestForm.origin_location_id = null;
+    // Clear customer details since we're delivering to our shop
+    requestForm.customer_name = '';
+    requestForm.customer_address = '';
+    requestForm.customer_phone = '';
+  }
 });
 
 // Form validation
@@ -771,12 +930,22 @@ function getStatusColor(status: string): string {
 
 function getUrgencyColor(urgency: string): string {
   const colors: Record<string, string> = {
-    normal: 'blue',
+    first_available: 'teal',
     today: 'orange',
-    asap: 'deep-orange',
-    emergency: 'negative',
+    saturday: 'purple',
+    next_business_day: 'blue',
   };
   return colors[urgency] || 'grey';
+}
+
+function getUrgencyLabel(urgency: string): string {
+  const labels: Record<string, string> = {
+    first_available: 'First Available Run',
+    today: 'Today',
+    saturday: 'Saturday',
+    next_business_day: 'Next Business Day',
+  };
+  return labels[urgency] || urgency;
 }
 
 function getOriginText(request: PartsRequest): string {
@@ -838,24 +1007,45 @@ function onTableRequest(props: any) {
 }
 
 function openCreateDialog() {
-  // Reset form
-  Object.assign(requestForm, {
-    request_type_id: null,
-    urgency_id: null,
+  // Reset validation first
+  resetValidation();
+
+  // Set default urgency to "first_available" if available
+  const firstAvailable = lookups.value.urgency_levels?.find((u: { name: string }) => u.name === 'first_available');
+
+  // Set default request type to "pickup"
+  const pickupType = lookups.value.request_types?.find((t: { name: string }) => t.name === 'pickup');
+
+  // Get user's home location ID for defaults
+  const userHomeLocationId = authStore.user?.home_location_id || null;
+
+  // Set form defaults
+  const defaults = {
+    // Default to pickup type
+    request_type_id: pickupType?.id || null,
+    urgency_id: firstAvailable?.id || null,
+    not_before_datetime: null,
     origin_location_id: null,
     vendor_name: '',
-    receiving_location_id: null,
+    // Default receiving location to user's home shop (for pickup requests)
+    receiving_location_id: userHomeLocationId,
     customer_name: '',
     customer_address: '',
     customer_phone: '',
     details: '',
     special_instructions: '',
-    pickup_run: false,
     slack_notify_pickup: false,
     slack_notify_delivery: false,
     slack_channel: '',
-  });
-  resetValidation();
+  };
+
+  Object.assign(requestForm, defaults);
+
+  // Sync default values to validation system so they're recognized on submit
+  updateField('request_type_id', defaults.request_type_id);
+  updateField('urgency_id', defaults.urgency_id);
+  updateField('receiving_location_id', defaults.receiving_location_id);
+
   showCreateDialog.value = true;
 }
 
@@ -930,6 +1120,11 @@ async function loadLocations() {
 
 onMounted(async () => {
   await partsRequestsStore.fetchLookups();
+  // Set default urgency to "first_available" if available
+  const firstAvailable = lookups.value.urgency_levels?.find((u: { name: string }) => u.name === 'first_available');
+  if (firstAvailable && !requestForm.urgency_id) {
+    requestForm.urgency_id = firstAvailable.id;
+  }
   await fetchRequests();
   await loadRunners();
   await loadLocations();

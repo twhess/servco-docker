@@ -196,7 +196,7 @@ const filteredRoutes = computed(() => {
 
 const locationOptions = computed(() => {
   return locationsStore.locations
-    .filter(loc => loc.type === 'fixed_shop')
+    .filter(loc => loc.location_type === 'fixed_shop')
     .map(loc => ({
       value: loc.id,
       label: loc.name,
@@ -232,16 +232,24 @@ function editRoute(route: Route) {
 }
 
 async function saveRoute() {
+  if (!routeForm.value.start_location_id) return
+
   saving.value = true
   try {
     if (editingRoute.value) {
-      await routesStore.updateRoute(editingRoute.value.id, routeForm.value)
+      await routesStore.updateRoute(editingRoute.value.id, {
+        ...routeForm.value,
+        start_location_id: routeForm.value.start_location_id
+      })
       $q.notify({
         type: 'positive',
         message: 'Route updated successfully',
       })
     } else {
-      await routesStore.createRoute(routeForm.value)
+      await routesStore.createRoute({
+        ...routeForm.value,
+        start_location_id: routeForm.value.start_location_id
+      })
       $q.notify({
         type: 'positive',
         message: 'Route created successfully',

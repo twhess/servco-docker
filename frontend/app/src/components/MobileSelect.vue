@@ -8,6 +8,8 @@
       :options="filteredOptions"
       :option-value="optionValue"
       :option-label="optionLabel"
+      emit-value
+      map-options
       :hint="hint"
       :error="!!error"
       :error-message="error || undefined"
@@ -21,8 +23,11 @@
       filled
       stack-label
       :dense="false"
+      options-dense
       class="mobile-select"
-      behavior="dialog"
+      popup-content-class="mobile-select-popup"
+      popup-content-style="max-width: 100%"
+      behavior="menu"
     >
       <template v-if="icon" v-slot:prepend>
         <q-icon :name="icon" />
@@ -170,6 +175,25 @@ const handleClear = () => {
   .mobile-chip {
     min-height: 32px;
     margin: 2px;
+  }
+}
+</style>
+
+<style lang="scss">
+// Global styles for select popup (not scoped)
+.mobile-select-popup {
+  // Constrain width to match the field
+  min-width: 0 !important;
+
+  .q-item {
+    min-height: 36px;
+    padding: 4px 12px;
+  }
+
+  // Ensure text wraps if needed
+  .q-item__label {
+    white-space: normal;
+    word-break: break-word;
   }
 }
 </style>

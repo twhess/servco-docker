@@ -291,14 +291,25 @@
                   label="Home Shop Location"
                   outlined
                   dense
-                  :options="locations"
+                  :options="shopLocations"
                   option-value="id"
-                  option-label="name"
+                  :option-label="(loc: ShopLocation) => loc.city && loc.state ? `${loc.name} – ${loc.city}, ${loc.state}` : loc.name"
                   emit-value
                   map-options
                   clearable
                   hint="Select user's primary shop location"
-                />
+                >
+                  <template v-slot:option="scope">
+                    <q-item v-bind="scope.itemProps">
+                      <q-item-section>
+                        <q-item-label>{{ scope.opt.name }}</q-item-label>
+                        <q-item-label caption v-if="scope.opt.city || scope.opt.state">
+                          {{ [scope.opt.city, scope.opt.state].filter(Boolean).join(', ') }}
+                        </q-item-label>
+                      </q-item-section>
+                    </q-item>
+                  </template>
+                </q-select>
               </div>
 
               <div class="col-12">
@@ -567,14 +578,25 @@
                   label="Home Shop Location"
                   outlined
                   dense
-                  :options="locations"
+                  :options="shopLocations"
                   option-value="id"
-                  option-label="name"
+                  :option-label="(loc: ShopLocation) => loc.city && loc.state ? `${loc.name} – ${loc.city}, ${loc.state}` : loc.name"
                   emit-value
                   map-options
                   clearable
                   hint="Select user's primary shop location"
-                />
+                >
+                  <template v-slot:option="scope">
+                    <q-item v-bind="scope.itemProps">
+                      <q-item-section>
+                        <q-item-label>{{ scope.opt.name }}</q-item-label>
+                        <q-item-label caption v-if="scope.opt.city || scope.opt.state">
+                          {{ [scope.opt.city, scope.opt.state].filter(Boolean).join(', ') }}
+                        </q-item-label>
+                      </q-item-section>
+                    </q-item>
+                  </template>
+                </q-select>
               </div>
 
               <div class="col-12">
@@ -814,6 +836,7 @@ interface User {
   email: string;
   role?: string;
   role_ids?: number[];
+  roles?: Array<{ id: number; name: string; display_name: string }>;
   employee_id?: string;
   first_name?: string;
   last_name?: string;
@@ -822,6 +845,7 @@ interface User {
   pin_code?: string;
   home_shop?: string;
   home_location_id?: number | null;
+  home_location?: { id: number; name: string; city?: string; state?: string };
   personal_email?: string;
   slack_id?: string;
   dext_email?: string;
@@ -835,6 +859,21 @@ interface User {
   active: boolean;
   created_at: string;
   updated_at?: string;
+}
+
+interface ShopLocation {
+  id: number;
+  name: string;
+  city?: string;
+  state?: string;
+  location_type: string;
+}
+
+interface Role {
+  id: number;
+  name: string;
+  display_name: string;
+  description?: string;
 }
 
 const $q = useQuasar();
@@ -874,8 +913,8 @@ const addForm = ref({
   zip: '',
 });
 
-const locations = ref<any[]>([]);
-const roles = ref<any[]>([]);
+const shopLocations = ref<ShopLocation[]>([]);
+const roles = ref<Role[]>([]);
 
 const roleOptions = [
   { value: 'super_admin', label: 'Super Admin' },
@@ -1085,6 +1124,8 @@ function openAddUserDialog() {
     password: '',
     password_confirmation: '',
     employee_id: '',
+    role: 'read_only',
+    role_ids: [],
     first_name: '',
     last_name: '',
     preferred_name: '',
@@ -1106,12 +1147,19 @@ function openAddUserDialog() {
   showAddDialog.value = true;
 }
 
-async function loadLocations() {
+async function loadShopLocations() {
   try {
-    const response = await api.get('/locations', { params: { per_page: 100 } });
-    locations.value = response.data.data;
+    // Fetch only fixed_shop type locations for the Home Shop dropdown
+    const response = await api.get('/locations', {
+      params: {
+        type: 'fixed_shop',
+        active: 'true',
+        per_page: 100,
+      },
+    });
+    shopLocations.value = response.data.data || [];
   } catch (error) {
-    console.error('Failed to load locations', error);
+    console.error('Failed to load shop locations', error);
   }
 }
 
@@ -1129,14 +1177,8 @@ async function saveUser() {
 
   loading.value = true;
   try {
+    // Backend now handles role sync in the same update call
     await api.put(`/users/${editForm.value.id}`, editForm.value);
-
-    // If role_ids is set, assign roles to user
-    if (editForm.value.role_ids && editForm.value.role_ids.length > 0) {
-      await api.post(`/users/${editForm.value.id}/roles`, {
-        role_ids: editForm.value.role_ids,
-      });
-    }
 
     $q.notify({
       type: 'positive',
@@ -1152,7 +1194,7 @@ async function saveUser() {
       message: 'Failed to update user',
       position: 'top',
     });
-  } finally{
+  } finally {
     loading.value = false;
   }
 }
@@ -1258,7 +1300,7 @@ function getRoleColor(role: string | undefined): string {
 
 onMounted(() => {
   void fetchUsers();
-  void loadLocations();
+  void loadShopLocations();
   void loadRoles();
 });
 </script>

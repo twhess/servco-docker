@@ -29,10 +29,10 @@
 
               <div class="row q-gutter-sm q-mb-md">
                 <q-chip v-if="getStopActual(stop)?.arrived_at" size="sm" color="green" text-color="white">
-                  Arrived: {{ formatDateTime(getStopActual(stop)?.arrived_at) }}
+                  Arrived: {{ formatDateTime(getStopActual(stop)!.arrived_at!) }}
                 </q-chip>
                 <q-chip v-if="getStopActual(stop)?.departed_at" size="sm" color="blue" text-color="white">
-                  Departed: {{ formatDateTime(getStopActual(stop)?.departed_at) }}
+                  Departed: {{ formatDateTime(getStopActual(stop)!.departed_at!) }}
                 </q-chip>
                 <q-chip v-else size="sm" color="grey-4" text-color="grey-8">
                   ETA: {{ getEstimatedArrival(stop) }}
@@ -214,8 +214,10 @@ function formatDate(date: string) {
   return new Date(date).toLocaleDateString()
 }
 
-function formatTime(time: string) {
+function formatTime(time: string | undefined) {
+  if (!time) return ''
   const [hours, minutes] = time.split(':')
+  if (!hours || !minutes) return time
   const hour = parseInt(hours)
   const ampm = hour >= 12 ? 'PM' : 'AM'
   const displayHour = hour % 12 || 12

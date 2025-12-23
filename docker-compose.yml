@@ -18,6 +18,20 @@ services:
       timeout: 3s
       retries: 30
 
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin:latest
+    container_name: myapp-phpmyadmin
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+      PMA_USER: root
+      PMA_PASSWORD: root
+      MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "8081:80"
+    depends_on:
+      - mysql
+
   backend:
     build:
       context: ./backend

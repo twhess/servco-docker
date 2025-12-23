@@ -16,6 +16,8 @@ class AuthController extends Controller
             'email' => 'required|string|email|max:255|unique:users',
             'password' => 'required|string|min:8|confirmed',
             'role' => 'nullable|in:super_admin,ops_admin,dispatcher,shop_manager,parts_manager,runner_driver,technician_mobile,read_only',
+            'role_ids' => 'nullable|array',
+            'role_ids.*' => 'exists:roles,id',
             'employee_id' => 'nullable|string|max:255',
             'first_name' => 'nullable|string|max:255',
             'last_name' => 'nullable|string|max:255',
@@ -35,6 +37,17 @@ class AuthController extends Controller
             'zip' => 'nullable|string|max:255',
             'paytype' => 'nullable|string|max:255',
         ]);
+
+        // Validate home_location_id is a shop type if provided
+        if ($request->has('home_location_id') && $request->home_location_id) {
+            $location = \App\Models\ServiceLocation::find($request->home_location_id);
+            if ($location && $location->location_type !== 'fixed_shop') {
+                return response()->json([
+                    'message' => 'Home location must be a fixed shop',
+                    'errors' => ['home_location_id' => ['The selected location must be a fixed shop.']]
+                ], 422);
+            }
+        }
 
         $user = User::create([
             'username' => $request->username,
@@ -61,10 +74,20 @@ class AuthController extends Controller
             'paytype' => $request->paytype,
         ]);
 
+        // Sync roles if provided
+        if ($request->has('role_ids') && is_array($request->role_ids) && count($request->role_ids) > 0) {
+            $user->syncRoles($request->role_ids);
+        }
+
         $token = $user->createToken('auth_token')->plainTextToken;
 
+        // Load relationships for response
+        $user->load(['roles', 'homeLocation']);
+        $userData = $user->toArray();
+        $userData['role_ids'] = $user->roles->pluck('id')->toArray();
+
         return response()->json([
-            'user' => $user,
+            'user' => $userData,
             'token' => $token,
             'token_type' => 'Bearer',
         ], 201);
@@ -120,13 +143,20 @@ class AuthController extends Controller
     {
         $includeInactive = $request->query('include_inactive', 'false') === 'true';
 
-        $query = User::orderBy('created_at', 'desc');
+        $query = User::with(['roles', 'homeLocation'])
+            ->orderBy('created_at', 'desc');
 
         if (!$includeInactive) {
             $query->where('active', true);
         }
 
-        $users = $query->get();
+        $users = $query->get()->map(function ($user) {
+            $userData = $user->toArray();
+            // Add role_ids array for frontend form binding
+            $userData['role_ids'] = $user->roles->pluck('id')->toArray();
+            return $userData;
+        });
+
         return response()->json($users);
     }
 
@@ -138,6 +168,8 @@ class AuthController extends Controller
             'username' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users,email,' . $id,
             'role' => 'nullable|in:super_admin,ops_admin,dispatcher,shop_manager,parts_manager,runner_driver,technician_mobile,read_only',
+            'role_ids' => 'nullable|array',
+            'role_ids.*' => 'exists:roles,id',
             'employee_id' => 'nullable|string|max:255',
             'first_name' => 'nullable|string|max:255',
             'last_name' => 'nullable|string|max:255',
@@ -157,6 +189,17 @@ class AuthController extends Controller
             'zip' => 'nullable|string|max:255',
             'paytype' => 'nullable|string|max:255',
         ]);
+
+        // Validate home_location_id is a shop type if provided
+        if ($request->has('home_location_id') && $request->home_location_id) {
+            $location = \App\Models\ServiceLocation::find($request->home_location_id);
+            if ($location && $location->location_type !== 'fixed_shop') {
+                return response()->json([
+                    'message' => 'Home location must be a fixed shop',
+                    'errors' => ['home_location_id' => ['The selected location must be a fixed shop.']]
+                ], 422);
+            }
+        }
 
         $user->update($request->only([
             'username',
@@ -182,8 +225,18 @@ class AuthController extends Controller
             'paytype',
         ]));
 
+        // Sync roles if provided
+        if ($request->has('role_ids')) {
+            $user->syncRoles($request->role_ids ?? []);
+        }
+
+        // Reload user with relationships
+        $user->load(['roles', 'homeLocation']);
+        $userData = $user->toArray();
+        $userData['role_ids'] = $user->roles->pluck('id')->toArray();
+
         return response()->json([
-            'user' => $user,
+            'user' => $userData,
             'message' => 'User updated successfully',
         ]);
     }

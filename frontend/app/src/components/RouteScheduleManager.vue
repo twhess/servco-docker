@@ -116,9 +116,11 @@ const sortedSchedules = computed(() => {
   })
 })
 
-function formatTime(time: string) {
+function formatTime(time: string | undefined) {
+  if (!time) return ''
   // Convert 24h time to 12h format
   const [hours, minutes] = time.split(':')
+  if (!hours || !minutes) return time
   const hour = parseInt(hours)
   const ampm = hour >= 12 ? 'PM' : 'AM'
   const displayHour = hour % 12 || 12
@@ -149,7 +151,9 @@ function confirmDelete(schedule: any) {
 
 async function refreshSchedules() {
   const route = await routesStore.fetchRoute(props.routeId)
-  schedules.value = route.schedules || []
+  if (route) {
+    schedules.value = route.schedules || []
+  }
 }
 
 function closeDialog() {

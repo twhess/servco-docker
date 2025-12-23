@@ -160,8 +160,8 @@ const readyNote = ref('')
 const notAvailableReason = ref('')
 
 const requests = computed(() => partsRequestsStore.requests.filter(r =>
-  r.request_type_id === 3 && // Transfer type
-  r.status_id === 1 && // New status
+  r.request_type.id === 3 && // Transfer type
+  r.status.id === 1 && // New status
   r.origin_location_id === authStore.user?.primary_location_id
 ))
 
@@ -177,12 +177,8 @@ onMounted(async () => {
 async function loadRequests() {
   loading.value = true
   try {
-    // Fetch requests for my location that need staging
-    await partsRequestsStore.fetchRequests({
-      request_type_id: 3, // Transfer
-      status_id: 1, // New
-      origin_location_id: authStore.user?.primary_location_id,
-    })
+    // Fetch all requests, then filter in computed property
+    await partsRequestsStore.fetchRequests()
   } catch (error: any) {
     $q.notify({
       type: 'negative',

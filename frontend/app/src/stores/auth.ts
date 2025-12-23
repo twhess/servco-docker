@@ -15,6 +15,11 @@ interface User {
   phone_number?: string;
   pin_code?: string;
   home_shop?: string;
+  home_location_id?: number | null;
+  home_location?: {
+    id: number;
+    name: string;
+  };
   personal_email?: string;
   slack_id?: string;
   dext_email?: string;
