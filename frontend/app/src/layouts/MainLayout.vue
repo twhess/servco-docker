@@ -107,11 +107,26 @@
     <q-drawer
       v-model="leftDrawerOpen"
       show-if-above
-      :width="240"
+      :width="sidebarCollapsed ? 64 : 240"
       :breakpoint="500"
       bordered
-      class="bg-grey-2"
+      class="bg-grey-2 sidebar-drawer"
     >
+      <!-- Collapse toggle button straddling the right border -->
+      <q-btn
+        round
+        dense
+        unelevated
+        :icon="sidebarCollapsed ? 'chevron_right' : 'chevron_left'"
+        size="xs"
+        color="grey-4"
+        text-color="grey-7"
+        class="sidebar-collapse-btn"
+        @click="toggleSidebarCollapse"
+      >
+        <q-tooltip>{{ sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar' }}</q-tooltip>
+      </q-btn>
+
       <q-scroll-area class="fit">
         <q-list padding class="text-grey-8">
           <q-item
@@ -123,8 +138,9 @@
           >
             <q-item-section avatar>
               <q-icon name="photo" />
+              <q-tooltip v-if="sidebarCollapsed" anchor="center right" self="center left">Photos</q-tooltip>
             </q-item-section>
-            <q-item-section>
+            <q-item-section v-if="!sidebarCollapsed">
               Photos
             </q-item-section>
           </q-item>
@@ -138,8 +154,9 @@
           >
             <q-item-section avatar>
               <q-icon name="collections" />
+              <q-tooltip v-if="sidebarCollapsed" anchor="center right" self="center left">Albums</q-tooltip>
             </q-item-section>
-            <q-item-section>
+            <q-item-section v-if="!sidebarCollapsed">
               Albums
             </q-item-section>
           </q-item>
@@ -153,8 +170,9 @@
           >
             <q-item-section avatar>
               <q-icon name="people" />
+              <q-tooltip v-if="sidebarCollapsed" anchor="center right" self="center left">Shared</q-tooltip>
             </q-item-section>
-            <q-item-section>
+            <q-item-section v-if="!sidebarCollapsed">
               Shared
             </q-item-section>
           </q-item>
@@ -169,8 +187,9 @@
           >
             <q-item-section avatar>
               <q-icon name="group" />
+              <q-tooltip v-if="sidebarCollapsed" anchor="center right" self="center left">Users</q-tooltip>
             </q-item-section>
-            <q-item-section>
+            <q-item-section v-if="!sidebarCollapsed">
               Users
             </q-item-section>
           </q-item>
@@ -184,8 +203,9 @@
           >
             <q-item-section avatar>
               <q-icon name="admin_panel_settings" />
+              <q-tooltip v-if="sidebarCollapsed" anchor="center right" self="center left">Roles & Permissions</q-tooltip>
             </q-item-section>
-            <q-item-section>
+            <q-item-section v-if="!sidebarCollapsed">
               Roles & Permissions
             </q-item-section>
           </q-item>
@@ -198,8 +218,9 @@
           >
             <q-item-section avatar>
               <q-icon name="location_on" />
+              <q-tooltip v-if="sidebarCollapsed" anchor="center right" self="center left">Locations</q-tooltip>
             </q-item-section>
-            <q-item-section>
+            <q-item-section v-if="!sidebarCollapsed">
               Locations
             </q-item-section>
           </q-item>
@@ -212,9 +233,70 @@
           >
             <q-item-section avatar>
               <q-icon name="local_shipping" />
+              <q-tooltip v-if="sidebarCollapsed" anchor="center right" self="center left">Parts Requests</q-tooltip>
             </q-item-section>
-            <q-item-section>
+            <q-item-section v-if="!sidebarCollapsed">
               Parts Requests
+            </q-item-section>
+          </q-item>
+
+          <q-item
+            clickable
+            v-ripple
+            to="/vendors"
+            active-class="bg-blue-1 text-blue-9"
+          >
+            <q-item-section avatar>
+              <q-icon name="store" />
+              <q-tooltip v-if="sidebarCollapsed" anchor="center right" self="center left">Vendors</q-tooltip>
+            </q-item-section>
+            <q-item-section v-if="!sidebarCollapsed">
+              Vendors
+            </q-item-section>
+          </q-item>
+
+          <q-item
+            clickable
+            v-ripple
+            to="/customers"
+            active-class="bg-blue-1 text-blue-9"
+          >
+            <q-item-section avatar>
+              <q-icon name="business" />
+              <q-tooltip v-if="sidebarCollapsed" anchor="center right" self="center left">Customers</q-tooltip>
+            </q-item-section>
+            <q-item-section v-if="!sidebarCollapsed">
+              Customers
+            </q-item-section>
+          </q-item>
+
+          <q-item
+            clickable
+            v-ripple
+            to="/runs-dashboard"
+            active-class="bg-blue-1 text-blue-9"
+          >
+            <q-item-section avatar>
+              <q-icon name="dashboard" />
+              <q-tooltip v-if="sidebarCollapsed" anchor="center right" self="center left">Runs Dashboard</q-tooltip>
+            </q-item-section>
+            <q-item-section v-if="!sidebarCollapsed">
+              Runs Dashboard
+            </q-item-section>
+          </q-item>
+
+          <q-item
+            clickable
+            v-ripple
+            to="/routes"
+            active-class="bg-blue-1 text-blue-9"
+          >
+            <q-item-section avatar>
+              <q-icon name="route" />
+              <q-tooltip v-if="sidebarCollapsed" anchor="center right" self="center left">Routes</q-tooltip>
+            </q-item-section>
+            <q-item-section v-if="!sidebarCollapsed">
+              Routes
             </q-item-section>
           </q-item>
 
@@ -227,8 +309,9 @@
           >
             <q-item-section avatar>
               <q-icon name="assignment" />
+              <q-tooltip v-if="sidebarCollapsed" anchor="center right" self="center left">My Jobs</q-tooltip>
             </q-item-section>
-            <q-item-section>
+            <q-item-section v-if="!sidebarCollapsed">
               My Jobs
             </q-item-section>
           </q-item>
@@ -241,8 +324,9 @@
           >
             <q-item-section avatar>
               <q-icon name="person" />
+              <q-tooltip v-if="sidebarCollapsed" anchor="center right" self="center left">Profile</q-tooltip>
             </q-item-section>
-            <q-item-section>
+            <q-item-section v-if="!sidebarCollapsed">
               Profile
             </q-item-section>
           </q-item>
@@ -258,8 +342,9 @@
           >
             <q-item-section avatar>
               <q-icon name="delete" />
+              <q-tooltip v-if="sidebarCollapsed" anchor="center right" self="center left">Trash</q-tooltip>
             </q-item-section>
-            <q-item-section>
+            <q-item-section v-if="!sidebarCollapsed">
               Trash
             </q-item-section>
           </q-item>
@@ -269,16 +354,33 @@
           <q-item
             clickable
             v-ripple
+            to="/closed-dates"
+            active-class="bg-blue-1 text-blue-9"
+          >
+            <q-item-section avatar>
+              <q-icon name="event_busy" />
+              <q-tooltip v-if="sidebarCollapsed" anchor="center right" self="center left">Closed Dates</q-tooltip>
+            </q-item-section>
+            <q-item-section v-if="!sidebarCollapsed">
+              Closed Dates
+            </q-item-section>
+          </q-item>
+
+          <q-item
+            clickable
+            v-ripple
             to="/settings"
             active-class="bg-blue-1 text-blue-9"
           >
             <q-item-section avatar>
               <q-icon name="settings" />
+              <q-tooltip v-if="sidebarCollapsed" anchor="center right" self="center left">Settings</q-tooltip>
             </q-item-section>
-            <q-item-section>
+            <q-item-section v-if="!sidebarCollapsed">
               Settings
             </q-item-section>
           </q-item>
+
         </q-list>
       </q-scroll-area>
     </q-drawer>
@@ -290,16 +392,33 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from 'stores/auth';
 
 const router = useRouter();
 const authStore = useAuthStore();
 
+const SIDEBAR_COLLAPSED_KEY = 'sidebar_collapsed';
+
 const leftDrawerOpen = ref(false);
+const sidebarCollapsed = ref(false);
 const search = ref('');
 const menuItem = ref('photos');
+
+// Load collapsed state from localStorage on mount
+onMounted(() => {
+  const saved = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
+  if (saved !== null) {
+    sidebarCollapsed.value = saved === 'true';
+  }
+});
+
+// Toggle sidebar collapsed state and persist
+function toggleSidebarCollapse() {
+  sidebarCollapsed.value = !sidebarCollapsed.value;
+  localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(sidebarCollapsed.value));
+}
 
 const userAvatarUrl = computed(() => {
   if (authStore.user?.avatar) {
@@ -363,4 +482,20 @@ function handleUpload() {
   &__toolbar-input
     width: 40%
     max-width: 600px
+
+.sidebar-drawer
+  overflow: visible !important
+
+.sidebar-collapse-btn
+  position: absolute
+  top: 12px
+  right: -12px
+  z-index: 1
+  width: 24px
+  height: 24px
+  min-width: 24px
+  min-height: 24px
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15)
+  &:hover
+    background-color: #e0e0e0 !important
 </style>

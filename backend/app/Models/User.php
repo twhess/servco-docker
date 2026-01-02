@@ -18,6 +18,13 @@ class User extends Authenticatable
     use HasFactory, Notifiable, HasApiTokens, HasAuditFields, Auditable;
 
     /**
+     * The accessors to append to the model's array form.
+     *
+     * @var list<string>
+     */
+    protected $appends = ['name'];
+
+    /**
      * The attributes that are mass assignable.
      *
      * @var list<string>
@@ -73,6 +80,24 @@ class User extends Authenticatable
             'active' => 'boolean',
             'allowed_location_ids' => 'array',
         ];
+    }
+
+    // Accessors
+
+    /**
+     * Get the user's full name.
+     * Uses preferred_name in place of first_name if set, combined with last_name.
+     * Falls back to username if no name fields are set.
+     */
+    public function getNameAttribute(): string
+    {
+        $firstName = $this->preferred_name ?: $this->first_name;
+
+        if ($firstName || $this->last_name) {
+            return trim("{$firstName} {$this->last_name}");
+        }
+
+        return $this->username ?? '';
     }
 
     // Relationships

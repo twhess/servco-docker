@@ -258,8 +258,9 @@
         <q-separator />
 
         <q-card-section style="max-height: 70vh" class="scroll">
-          <q-form @submit="saveLocation" class="q-gutter-md">
-            <div class="row q-col-gutter-md">
+          <q-form @submit="saveLocation">
+            <!-- Name and Code Row -->
+            <div class="row q-col-gutter-md q-mb-md">
               <div class="col-12 col-sm-8">
                 <q-input
                   v-model="locationForm.name"
@@ -277,6 +278,7 @@
               </div>
             </div>
 
+            <!-- Type Select -->
             <q-select
               v-model="locationForm.location_type"
               label="Type *"
@@ -287,8 +289,10 @@
               emit-value
               map-options
               :rules="[val => !!val || 'Type is required']"
+              class="q-mb-md"
             />
 
+            <!-- Status Select -->
             <q-select
               v-if="locationForm.location_type && !['vendor', 'customer_site'].includes(locationForm.location_type)"
               v-model="locationForm.status"
@@ -300,10 +304,11 @@
               emit-value
               map-options
               clearable
+              class="q-mb-md"
             />
 
             <!-- Fixed Location Fields -->
-            <div v-if="locationForm.location_type && !locationForm.location_type.includes('mobile')">
+            <div v-if="locationForm.location_type && !locationForm.location_type.includes('mobile')" class="q-mb-md">
               <div class="text-subtitle2 q-mb-sm">Address</div>
               <div class="row q-col-gutter-md">
                 <div class="col-12">
@@ -325,7 +330,7 @@
             </div>
 
             <!-- Mobile Location Fields -->
-            <div v-if="locationForm.location_type && locationForm.location_type.includes('mobile')">
+            <template v-if="locationForm.location_type && locationForm.location_type.includes('mobile')">
               <q-select
                 v-model="locationForm.home_base_location_id"
                 label="Home Base Shop"
@@ -336,28 +341,32 @@
                 emit-value
                 map-options
                 clearable
+                class="q-mb-md"
               />
 
               <q-toggle
                 v-model="locationForm.is_dispatchable"
                 label="Dispatchable"
+                class="q-mb-md"
               />
-            </div>
+            </template>
 
+            <!-- Notes -->
             <q-input
               v-model="locationForm.notes"
               label="Notes"
               outlined
               type="textarea"
               rows="3"
+              class="q-mb-md"
             />
 
             <!-- Color Settings -->
-            <div v-if="['fixed_shop', 'mobile_service_truck', 'parts_runner_vehicle'].includes(locationForm.location_type || '')">
+            <div v-if="['fixed_shop', 'mobile_service_truck', 'parts_runner_vehicle'].includes(locationForm.location_type || '')" class="q-mb-md">
               <div class="text-subtitle2 q-mb-sm">Display Colors</div>
               <div class="row q-col-gutter-md">
                 <div class="col-12 col-sm-6">
-                  <div class="row items-center q-gutter-sm">
+                  <div class="row items-center no-wrap">
                     <q-input
                       v-model="locationForm.text_color"
                       label="Text Color"
@@ -378,13 +387,13 @@
                     </q-input>
                     <div
                       v-if="locationForm.text_color"
-                      class="color-preview"
+                      class="color-preview q-ml-sm"
                       :style="{ backgroundColor: locationForm.text_color }"
                     />
                   </div>
                 </div>
                 <div class="col-12 col-sm-6">
-                  <div class="row items-center q-gutter-sm">
+                  <div class="row items-center no-wrap">
                     <q-input
                       v-model="locationForm.background_color"
                       label="Background Color"
@@ -405,7 +414,7 @@
                     </q-input>
                     <div
                       v-if="locationForm.background_color"
-                      class="color-preview"
+                      class="color-preview q-ml-sm"
                       :style="{ backgroundColor: locationForm.background_color }"
                     />
                   </div>
@@ -422,6 +431,7 @@
               </div>
             </div>
 
+            <!-- Active Toggle -->
             <q-toggle
               v-model="locationForm.is_active"
               label="Active"

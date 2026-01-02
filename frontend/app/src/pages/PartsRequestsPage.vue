@@ -138,14 +138,19 @@
                 <q-icon name="place" size="xs" class="q-mr-xs" />
                 {{ getOriginText(props.row) }}
               </div>
+              <!-- Show vendor address under origin for non-return requests -->
+              <div v-if="props.row.vendor_address && props.row.request_type?.name !== 'return'" class="text-caption text-grey-7">
+                {{ props.row.vendor_address.one_line_address }}
+              </div>
               <div class="text-caption">
                 <q-icon name="flag" size="xs" class="q-mr-xs" />
                 {{ getDestinationText(props.row) }}
               </div>
-              <div v-if="props.row.vendor_name" class="text-caption text-grey-7">
-                Vendor: {{ props.row.vendor_name }}
+              <!-- Show vendor address under destination for return requests -->
+              <div v-if="props.row.vendor_address && props.row.request_type?.name === 'return'" class="text-caption text-grey-7">
+                {{ props.row.vendor_address.one_line_address }}
               </div>
-              <div v-if="props.row.customer_name" class="text-caption text-grey-7">
+              <div v-if="props.row.customer_name && !props.row.vendor && props.row.request_type?.name !== 'return'" class="text-caption text-grey-7">
                 Customer: {{ props.row.customer_name }}
               </div>
             </q-td>
@@ -187,23 +192,16 @@
             </q-td>
           </template>
 
-          <template v-slot:body-cell-runner="props">
+          <template v-slot:body-cell-assigned_run="props">
             <q-td :props="props">
-              <div v-if="props.row.assigned_runner" class="text-weight-medium">
-                <q-icon name="person" size="xs" class="q-mr-xs" />
-                {{ props.row.assigned_runner.name }}
+              <div v-if="props.row.run_instance" class="text-weight-medium">
+                <q-icon name="directions_car" size="xs" class="q-mr-xs" />
+                {{ props.row.run_instance.route?.name || 'Unknown Route' }}
+                <div class="text-caption text-grey-7">
+                  {{ props.row.run_instance.schedule?.name || formatTime(props.row.run_instance.scheduled_time) }}
+                </div>
               </div>
-              <div v-else-if="can('parts_requests.assign')">
-                <q-btn
-                  flat
-                  dense
-                  size="sm"
-                  color="primary"
-                  label="Assign"
-                  @click="openAssignDialog(props.row)"
-                />
-              </div>
-              <span v-else class="text-grey-6">Unassigned</span>
+              <span v-else class="text-grey-6">Not Assigned</span>
             </q-td>
           </template>
 
@@ -266,6 +264,13 @@
                         <q-icon name="photo_library" />
                       </q-item-section>
                       <q-item-section>View Photos</q-item-section>
+                    </q-item>
+
+                    <q-item clickable v-close-popup @click="openDocuments(props.row)">
+                      <q-item-section avatar>
+                        <q-icon name="attach_file" />
+                      </q-item-section>
+                      <q-item-section>Attach Document</q-item-section>
                     </q-item>
                   </q-list>
                 </q-menu>
@@ -332,6 +337,7 @@
         @blur="touchField('not_before_datetime')"
         icon="schedule"
         hint="Leave empty for next available run"
+        clearable
       />
 
       <!-- Section Divider -->
@@ -341,10 +347,10 @@
       </div>
 
       <!-- Origin Shop Location Buttons (hidden for pickup - pickup is always from vendor) -->
-      <div v-if="!isPickupType" class="col-12" style="grid-column: 1 / -1;">
+      <div v-if="!isPickupType || isReturnType" class="col-12" style="grid-column: 1 / -1;">
         <div class="text-subtitle2 q-mb-sm">
           <q-icon name="store" class="q-mr-xs" />
-          Pickup From Shop
+          {{ isReturnType ? 'Return From Shop' : 'Pickup From Shop' }}
         </div>
         <div class="row q-gutter-sm">
           <q-btn
@@ -371,18 +377,31 @@
         <div class="text-caption text-grey-6 q-mt-xs">Select if picking up from one of our shops</div>
       </div>
 
-      <MobileFormField
-        v-if="((!requestForm.origin_location_id && !isTransferType) || isPickupType) && !isDeliveryType"
-        name="vendor_name"
-        v-model="requestForm.vendor_name"
-        label="Vendor Name"
-        type="text"
-        :error="getError('vendor_name')"
-        @update:model-value="updateField('vendor_name', $event)"
-        @blur="touchField('vendor_name')"
-        icon="business"
-        hint="Enter vendor name if picking up from external vendor"
-      />
+      <!-- Vendor Selection for Pickup (supplying location - where we pick up FROM) -->
+      <template v-if="showPickupVendorSelection">
+        <VendorSelect
+          name="vendor_id"
+          v-model="requestForm.vendor_id"
+          :initial-vendor-name="selectedVendorName"
+          label="Vendor"
+          :error="getError('vendor_id')"
+          icon="business"
+          @vendor-selected="handleVendorSelected"
+          @vendor-created="handleVendorCreated"
+        />
+
+        <VendorAddressSelect
+          v-if="requestForm.vendor_id"
+          name="vendor_address_id"
+          v-model="requestForm.vendor_address_id"
+          :vendor-id="requestForm.vendor_id"
+          :addresses="selectedVendorAddresses"
+          label="Pickup Address"
+          :error="getError('vendor_address_id')"
+          @address-selected="handleAddressSelected"
+          @address-created="handleAddressCreated"
+        />
+      </template>
 
       <!-- Section Divider -->
       <div class="col-12" style="grid-column: 1 / -1;">
@@ -390,8 +409,8 @@
         <div class="text-subtitle1 text-weight-medium q-my-sm">Receiving Location</div>
       </div>
 
-      <!-- Receiving Shop Location Buttons (hidden for delivery - delivery is always to customer) -->
-      <div v-if="!isDeliveryType" class="col-12" style="grid-column: 1 / -1;">
+      <!-- Receiving Shop Location Buttons (hidden for delivery and return - delivery is to customer, return is to vendor) -->
+      <div v-if="!isDeliveryType && !isReturnType" class="col-12" style="grid-column: 1 / -1;">
         <div class="text-subtitle2 q-mb-sm">
           <q-icon name="location_on" class="q-mr-xs" />
           Deliver To Shop
@@ -421,30 +440,55 @@
         <div class="text-caption text-grey-6 q-mt-xs">Select if delivering to one of our shops</div>
       </div>
 
-      <template v-if="(!requestForm.receiving_location_id && !isTransferType && !isPickupType) || isDeliveryType">
-        <MobileFormField
-          name="customer_name"
-          v-model="requestForm.customer_name"
-          label="Customer Name"
-          type="text"
-          :error="getError('customer_name')"
-          @update:model-value="updateField('customer_name', $event)"
-          @blur="touchField('customer_name')"
-          icon="person"
-          hint="Enter customer name if delivering to customer"
+      <!-- Vendor Selection for Return (receiving location - where we return TO) -->
+      <template v-if="isReturnType">
+        <VendorSelect
+          name="vendor_id"
+          v-model="requestForm.vendor_id"
+          :initial-vendor-name="selectedVendorName"
+          label="Return To Vendor"
+          :error="getError('vendor_id')"
+          icon="business"
+          required
+          @vendor-selected="handleVendorSelected"
+          @vendor-created="handleVendorCreated"
         />
 
-        <MobileFormField
-          name="customer_address"
-          v-model="requestForm.customer_address"
-          label="Customer Address"
-          type="textarea"
-          :rows="2"
-          :error="getError('customer_address')"
-          @update:model-value="updateField('customer_address', $event)"
-          @blur="touchField('customer_address')"
-          icon="home"
-          hint="Full address for customer delivery"
+        <VendorAddressSelect
+          v-if="requestForm.vendor_id"
+          name="vendor_address_id"
+          v-model="requestForm.vendor_address_id"
+          :vendor-id="requestForm.vendor_id"
+          :addresses="selectedVendorAddresses"
+          label="Return Address"
+          :error="getError('vendor_address_id')"
+          @address-selected="handleAddressSelected"
+          @address-created="handleAddressCreated"
+        />
+      </template>
+
+      <template v-if="((!requestForm.receiving_location_id && !isTransferType && !isPickupType && !isReturnType) || isDeliveryType)">
+        <CustomerSelect
+          name="customer_id"
+          v-model="requestForm.customer_id"
+          :initial-customer-name="selectedCustomerName"
+          label="Customer"
+          :error="getError('customer_id')"
+          icon="business"
+          @customer-selected="handleCustomerSelected"
+          @customer-created="handleCustomerCreated"
+        />
+
+        <CustomerAddressSelect
+          v-if="requestForm.customer_id"
+          name="customer_address_id"
+          v-model="requestForm.customer_address_id"
+          :customer-id="requestForm.customer_id"
+          :addresses="selectedCustomerAddresses"
+          label="Delivery Address"
+          :error="getError('customer_address_id')"
+          @address-selected="handleCustomerAddressSelected"
+          @address-created="handleCustomerAddressCreated"
         />
 
         <MobileFormField
@@ -456,7 +500,7 @@
           @update:model-value="updateField('customer_phone', $event)"
           @blur="touchField('customer_phone')"
           icon="phone"
-          hint="Contact number for delivery"
+          hint="Contact number for delivery (auto-filled from address)"
         />
       </template>
 
@@ -489,6 +533,194 @@
         @blur="touchField('special_instructions')"
         icon="info"
       />
+
+      <!-- Line Items Section (Collapsible) -->
+      <div class="col-12" style="grid-column: 1 / -1;">
+        <q-separator class="q-my-sm" />
+        <q-expansion-item
+          v-model="createItemsExpanded"
+          dense
+          header-class="bg-grey-2 text-grey-8 rounded-borders"
+          expand-icon-class="text-grey-7"
+        >
+          <template v-slot:header>
+            <q-item-section>
+              <q-item-label class="text-caption text-weight-medium">
+                Line Items
+                <q-badge v-if="requestForm.items.length > 0" color="primary" class="q-ml-sm">
+                  {{ requestForm.items.length }}
+                </q-badge>
+              </q-item-label>
+            </q-item-section>
+          </template>
+          <div class="q-pa-sm">
+            <PartsRequestItems
+              v-model="requestForm.items"
+              :readonly="false"
+              :show-verification="false"
+            />
+          </div>
+        </q-expansion-item>
+      </div>
+
+      <!-- Documents Section (Collapsible) -->
+      <div class="col-12" style="grid-column: 1 / -1;">
+        <q-separator class="q-my-sm" />
+        <q-expansion-item
+          v-model="createDocumentsExpanded"
+          dense
+          header-class="bg-grey-2 text-grey-8 rounded-borders"
+          expand-icon-class="text-grey-7"
+        >
+          <template v-slot:header>
+            <q-item-section>
+              <q-item-label class="text-caption text-weight-medium">
+                Documents
+                <q-badge v-if="pendingDocuments.length > 0" color="primary" class="q-ml-sm">
+                  {{ pendingDocuments.length }}
+                </q-badge>
+              </q-item-label>
+            </q-item-section>
+            <q-item-section side>
+              <q-btn
+                flat
+                dense
+                size="xs"
+                color="primary"
+                icon="attach_file"
+                label="Add"
+                @click.stop="triggerPendingFileInput"
+              />
+            </q-item-section>
+          </template>
+          <div class="q-pa-sm">
+            <input
+              ref="pendingFileInputRef"
+              type="file"
+              class="hidden"
+              accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.gif,.txt,.csv"
+              multiple
+              @change="handlePendingFileSelect"
+            />
+
+            <div v-if="pendingDocuments.length === 0" class="text-grey-6 text-center q-py-md">
+              No documents added yet. Documents will be uploaded when you create the request.
+            </div>
+
+            <q-list v-else separator class="rounded-borders bg-grey-1">
+              <q-item
+                v-for="(doc, index) in pendingDocuments"
+                :key="index"
+                class="q-py-sm"
+              >
+                <q-item-section avatar>
+                  <q-icon :name="getPendingDocIcon(doc.file)" color="grey-7" />
+                </q-item-section>
+
+                <q-item-section>
+                  <q-item-label class="text-weight-medium ellipsis">
+                    {{ doc.file.name }}
+                  </q-item-label>
+                  <q-item-label caption>
+                    {{ formatFileSize(doc.file.size) }}
+                  </q-item-label>
+                </q-item-section>
+
+                <q-item-section side>
+                  <q-btn
+                    flat
+                    dense
+                    round
+                    size="sm"
+                    icon="delete"
+                    color="negative"
+                    @click="removePendingDocument(index)"
+                  />
+                </q-item-section>
+              </q-item>
+            </q-list>
+
+            <div v-if="pendingDocuments.length > 0" class="q-mt-sm text-caption text-grey-7">
+              {{ pendingDocuments.length }} file{{ pendingDocuments.length !== 1 ? 's' : '' }} will be uploaded on create
+            </div>
+          </div>
+        </q-expansion-item>
+      </div>
+
+      <!-- Photos Section (Collapsible) -->
+      <div class="col-12" style="grid-column: 1 / -1;">
+        <q-separator class="q-my-sm" />
+        <q-expansion-item
+          v-model="createPhotosExpanded"
+          dense
+          header-class="bg-grey-2 text-grey-8 rounded-borders"
+          expand-icon-class="text-grey-7"
+        >
+          <template v-slot:header>
+            <q-item-section>
+              <q-item-label class="text-caption text-weight-medium">
+                Photos
+                <q-badge v-if="pendingImages.length > 0" color="primary" class="q-ml-sm">
+                  {{ pendingImages.length }}
+                </q-badge>
+              </q-item-label>
+            </q-item-section>
+            <q-item-section side>
+              <q-btn
+                flat
+                dense
+                size="xs"
+                color="primary"
+                icon="add_a_photo"
+                label="Add"
+                @click.stop="triggerPendingImageInput"
+              />
+            </q-item-section>
+          </template>
+          <div class="q-pa-sm">
+            <input
+              ref="pendingImageInputRef"
+              type="file"
+              class="hidden"
+              accept="image/*"
+              :capture="$q.platform.is.mobile ? 'environment' : undefined"
+              multiple
+              @change="handlePendingImageSelect"
+            />
+
+            <div v-if="pendingImages.length === 0" class="text-grey-6 text-center q-py-md">
+              No photos added yet. Add photos to help identify parts.
+            </div>
+
+            <div v-else class="pending-images-grid">
+              <div
+                v-for="(img, index) in pendingImages"
+                :key="index"
+                class="pending-image-thumb"
+              >
+                <q-img
+                  :src="img.preview"
+                  ratio="1"
+                  class="rounded-borders"
+                />
+                <q-btn
+                  round
+                  dense
+                  size="xs"
+                  icon="close"
+                  color="negative"
+                  class="remove-image-btn"
+                  @click="removePendingImage(index)"
+                />
+              </div>
+            </div>
+
+            <div v-if="pendingImages.length > 0" class="q-mt-sm text-caption text-grey-7">
+              {{ pendingImages.length }} photo{{ pendingImages.length !== 1 ? 's' : '' }} will be uploaded on create
+            </div>
+          </div>
+        </q-expansion-item>
+      </div>
 
       <!-- Section Divider -->
       <div class="col-12" style="grid-column: 1 / -1;">
@@ -558,33 +790,215 @@
 
     <!-- View Request Dialog -->
     <q-dialog v-model="showViewDialog">
-      <q-card style="width: 100%; max-width: 800px">
-        <q-card-section class="row items-center q-pb-none">
-          <div class="text-h6">{{ viewingRequest?.reference_number }}</div>
+      <q-card style="width: 100%; max-width: 550px; max-height: 90vh;" class="column">
+        <!-- Header -->
+        <q-card-section class="row items-center q-py-sm bg-grey-2">
+          <div class="text-subtitle1 text-weight-medium">{{ viewingRequest?.reference_number }}</div>
+          <q-chip
+            v-if="viewingRequest"
+            dense
+            size="sm"
+            :color="getStatusColor(viewingRequest.status.name)"
+            text-color="white"
+            class="q-ml-sm"
+          >
+            {{ getStatusLabel(viewingRequest.status.name) }}
+          </q-chip>
           <q-space />
-          <q-btn icon="close" flat round dense v-close-popup />
+          <q-btn icon="close" flat round dense size="sm" v-close-popup />
         </q-card-section>
 
-        <q-card-section v-if="viewingRequest">
-          <div class="q-gutter-sm">
-            <div><strong>Type:</strong> {{ getTypeLabel(viewingRequest.request_type.name) }}</div>
-            <div><strong>Status:</strong> {{ getStatusLabel(viewingRequest.status.name) }}</div>
-            <div><strong>Urgency:</strong> {{ viewingRequest.urgency.name.toUpperCase() }}</div>
-            <div><strong>From:</strong> {{ getOriginText(viewingRequest) }}</div>
-            <div><strong>To:</strong> {{ getDestinationText(viewingRequest) }}</div>
-            <div><strong>Requested By:</strong> {{ viewingRequest.requested_by.name }}</div>
-            <div v-if="viewingRequest.assigned_runner">
-              <strong>Assigned To:</strong> {{ viewingRequest.assigned_runner.name }}
+        <!-- Scrollable Content -->
+        <q-card-section class="col q-pa-md" style="overflow-y: auto; overflow-x: hidden;">
+          <div v-if="viewingRequest" class="q-gutter-md view-dialog-content">
+            <!-- Type & Urgency - inline chips -->
+            <div class="row items-center q-gutter-xs">
+              <q-chip
+                dense
+                size="sm"
+                :color="getTypeColor(viewingRequest.request_type.name)"
+                text-color="white"
+              >
+                {{ getTypeLabel(viewingRequest.request_type.name) }}
+              </q-chip>
+              <q-chip
+                dense
+                size="sm"
+                :color="getUrgencyColor(viewingRequest.urgency.name)"
+                text-color="white"
+              >
+                {{ getUrgencyLabel(viewingRequest.urgency.name) }}
+              </q-chip>
             </div>
-            <div><strong>Details:</strong> {{ viewingRequest.details }}</div>
-            <div v-if="viewingRequest.special_instructions">
-              <strong>Special Instructions:</strong> {{ viewingRequest.special_instructions }}
+
+            <!-- From → To Side by Side -->
+            <div class="row items-start q-gutter-sm bg-grey-1 q-pa-sm rounded-borders">
+              <!-- From -->
+              <div class="col">
+                <div class="text-caption text-weight-bold text-grey-8">FROM</div>
+                <div class="text-body2 text-weight-medium text-primary">{{ getOriginText(viewingRequest) }}</div>
+                <div v-if="viewingRequest.vendor_address" class="text-caption text-grey-6" style="word-break: break-word;">
+                  {{ viewingRequest.vendor_address.one_line_address }}
+                </div>
+                <div v-if="viewingRequest.vendor_address?.instructions" class="text-caption text-orange-8">
+                  <q-icon name="info" size="xs" /> {{ viewingRequest.vendor_address.instructions }}
+                </div>
+              </div>
+
+              <!-- Arrow -->
+              <div class="flex items-center q-px-sm" style="padding-top: 16px;">
+                <q-icon name="arrow_forward" size="md" color="grey-6" />
+              </div>
+
+              <!-- To -->
+              <div class="col">
+                <div class="text-caption text-weight-bold text-grey-8">TO</div>
+                <div class="text-body2 text-weight-medium text-positive">{{ getDestinationText(viewingRequest) }}</div>
+              </div>
             </div>
+
+            <!-- Requested By & Assigned To - inline -->
+            <div class="row q-gutter-md">
+              <div class="col">
+                <div class="text-caption text-grey-7">Requested By</div>
+                <div class="text-body2">{{ viewingRequest.requested_by.name }}</div>
+                <div class="text-caption text-grey-6">{{ formatDateTime(viewingRequest.requested_at) }}</div>
+              </div>
+              <div v-if="viewingRequest.assigned_runner" class="col">
+                <div class="text-caption text-grey-7">Assigned To</div>
+                <div class="text-body2">{{ viewingRequest.assigned_runner.name }}</div>
+              </div>
+            </div>
+
+            <!-- Details -->
+            <div>
+              <div class="text-caption text-grey-7">Details</div>
+              <div class="text-body2" style="word-break: break-word;">{{ viewingRequest.details }}</div>
+            </div>
+
+            <!-- Special Instructions -->
+            <div v-if="viewingRequest.special_instructions" class="bg-orange-1 q-pa-sm rounded-borders">
+              <div class="text-caption text-orange-9">
+                <q-icon name="warning" size="xs" class="q-mr-xs" />
+                {{ viewingRequest.special_instructions }}
+              </div>
+            </div>
+
+            <!-- Line Items Section (Collapsible) -->
+            <q-expansion-item
+              v-model="itemsExpanded"
+              dense
+              header-class="bg-grey-2 text-grey-8"
+              expand-icon-class="text-grey-7"
+            >
+              <template v-slot:header>
+                <q-item-section>
+                  <q-item-label class="text-caption text-weight-medium">
+                    Line Items
+                    <q-badge v-if="itemsCount > 0" color="primary" class="q-ml-sm">
+                      {{ itemsCount }}
+                    </q-badge>
+                  </q-item-label>
+                </q-item-section>
+              </template>
+              <div class="view-section q-pa-sm">
+                <PartsRequestItems
+                  :request-id="viewingRequest.id"
+                  :readonly="false"
+                  :show-verification="true"
+                  @count-changed="onItemsCountChanged"
+                />
+              </div>
+            </q-expansion-item>
+
+            <!-- Documents Section (Collapsible) -->
+            <q-expansion-item
+              v-model="documentsExpanded"
+              dense
+              header-class="bg-grey-2 text-grey-8"
+              expand-icon-class="text-grey-7"
+            >
+              <template v-slot:header>
+                <q-item-section>
+                  <q-item-label class="text-caption text-weight-medium">
+                    Documents
+                    <q-badge v-if="documentsCount > 0" color="primary" class="q-ml-sm">
+                      {{ documentsCount }}
+                    </q-badge>
+                  </q-item-label>
+                </q-item-section>
+              </template>
+              <div class="view-section q-pa-sm">
+                <PartsRequestDocuments
+                  :request-id="viewingRequest.id"
+                  :readonly="false"
+                  @count-changed="onDocumentsCountChanged"
+                />
+              </div>
+            </q-expansion-item>
+
+            <!-- Info Photos Section (Collapsible) -->
+            <q-expansion-item
+              v-model="photosExpanded"
+              dense
+              header-class="bg-grey-2 text-grey-8"
+              expand-icon-class="text-grey-7"
+            >
+              <template v-slot:header>
+                <q-item-section>
+                  <q-item-label class="text-caption text-weight-medium">
+                    Photos
+                    <q-badge v-if="photosCount > 0" color="primary" class="q-ml-sm">
+                      {{ photosCount }}
+                    </q-badge>
+                  </q-item-label>
+                </q-item-section>
+              </template>
+              <div class="view-section q-pa-sm">
+                <PartsRequestImages
+                  :request-id="viewingRequest.id"
+                  source="requester"
+                  :readonly="false"
+                  @count-changed="onPhotosCountChanged"
+                />
+              </div>
+            </q-expansion-item>
+
+            <!-- Runner Photos Section (Collapsible) -->
+            <q-expansion-item
+              v-model="runnerPhotosExpanded"
+              dense
+              header-class="bg-grey-2 text-grey-8"
+              expand-icon-class="text-grey-7"
+            >
+              <template v-slot:header>
+                <q-item-section>
+                  <q-item-label class="text-caption text-weight-medium">
+                    Runner Photos
+                    <q-badge v-if="runnerPhotosCount > 0" color="blue" class="q-ml-sm">
+                      {{ runnerPhotosCount }}
+                    </q-badge>
+                  </q-item-label>
+                </q-item-section>
+              </template>
+              <div class="view-section q-pa-sm">
+                <PartsRequestImages
+                  :request-id="viewingRequest.id"
+                  :show-runner-images="true"
+                  :readonly="true"
+                  @count-changed="onRunnerPhotosCountChanged"
+                />
+              </div>
+            </q-expansion-item>
           </div>
         </q-card-section>
 
-        <q-card-actions align="right">
-          <q-btn flat label="Close" v-close-popup />
+        <!-- Footer Actions -->
+        <q-card-actions class="bg-grey-1 q-pa-sm justify-between">
+          <div>
+            <q-btn flat dense size="sm" icon="timeline" @click="viewTimeline(viewingRequest!)" />
+          </div>
+          <q-btn flat dense size="sm" label="Close" color="primary" v-close-popup />
         </q-card-actions>
       </q-card>
     </q-dialog>
@@ -651,15 +1065,29 @@ import { ref, computed, onMounted, reactive, watch } from 'vue';
 import { usePartsRequestsStore, type PartsRequest, type PartsRequestEvent, type PartsRequestPhoto } from 'src/stores/partsRequests';
 import { useAuthStore } from 'src/stores/auth';
 import { api } from 'boot/axios';
-import { debounce } from 'quasar';
+import { debounce, useQuasar } from 'quasar';
 import { useFormValidation, validationRules } from 'src/composables/useFormValidation';
 import { useDraftState } from 'src/composables/useDraftState';
 import MobileFormDialog from 'src/components/MobileFormDialog.vue';
 import MobileFormField from 'src/components/MobileFormField.vue';
 import MobileSelect from 'src/components/MobileSelect.vue';
+import VendorSelect from 'src/components/VendorSelect.vue';
+import VendorAddressSelect from 'src/components/VendorAddressSelect.vue';
+import CustomerSelect from 'src/components/CustomerSelect.vue';
+import CustomerAddressSelect from 'src/components/CustomerAddressSelect.vue';
+import PartsRequestItems from 'src/components/PartsRequestItems.vue';
+import PartsRequestDocuments from 'src/components/PartsRequestDocuments.vue';
+import PartsRequestImages from 'src/components/PartsRequestImages.vue';
+import { useVendorsStore } from 'src/stores/vendors';
+import { useCustomersStore } from 'src/stores/customers';
+import type { Vendor, Address } from 'src/types/vendors';
+import type { Customer } from 'src/types/customers';
 
+const $q = useQuasar();
 const partsRequestsStore = usePartsRequestsStore();
 const authStore = useAuthStore();
+const vendorsStore = useVendorsStore();
+const customersStore = useCustomersStore();
 
 const requests = computed(() => partsRequestsStore.requests);
 const loading = computed(() => partsRequestsStore.loading);
@@ -680,6 +1108,47 @@ const photos = ref<PartsRequestPhoto[]>([]);
 const runners = ref<any[]>([]);
 const locations = ref<any[]>([]);
 
+// Vendor selection state
+const selectedVendor = ref<Vendor | null>(null);
+const selectedVendorAddresses = computed(() => selectedVendor.value?.addresses || []);
+const selectedVendorName = computed(() => selectedVendor.value?.name || '');
+
+// Pending documents for create form (uploaded after request is created)
+interface PendingDocument {
+  file: File;
+  description: string;
+}
+const pendingDocuments = ref<PendingDocument[]>([]);
+const pendingFileInputRef = ref<HTMLInputElement | null>(null);
+
+// Pending images for create form (uploaded after request is created)
+interface PendingImage {
+  file: File;
+  preview: string; // Data URL for preview
+}
+const pendingImages = ref<PendingImage[]>([]);
+const pendingImageInputRef = ref<HTMLInputElement | null>(null);
+
+// View dialog expansion states and counts
+const itemsExpanded = ref(false);
+const documentsExpanded = ref(false);
+const photosExpanded = ref(false);
+const runnerPhotosExpanded = ref(false);
+const itemsCount = ref(0);
+const documentsCount = ref(0);
+const photosCount = ref(0);
+const runnerPhotosCount = ref(0);
+
+// Create form expansion states (auto-expand when data exists)
+const createItemsExpanded = ref(false);
+const createDocumentsExpanded = ref(false);
+const createPhotosExpanded = ref(false);
+
+// Customer selection state
+const selectedCustomer = ref<Customer | null>(null);
+const selectedCustomerAddresses = computed(() => selectedCustomer.value?.addresses || []);
+const selectedCustomerName = computed(() => selectedCustomer.value?.formatted_name || '');
+
 const filters = ref({
   search: '',
   status: null as number | null,
@@ -696,13 +1165,26 @@ const pagination = ref({
   rowsNumber: 0,
 });
 
+interface LocalItem {
+  id?: number;
+  description: string;
+  quantity: number;
+  part_number: string | null;
+  notes: string | null;
+  is_verified: boolean;
+}
+
 const requestForm = reactive({
   request_type_id: null as number | null,
   urgency_id: null as number | null,
   not_before_datetime: null as string | null,
   origin_location_id: null as number | null,
   vendor_name: '',
+  vendor_id: null as number | null,
+  vendor_address_id: null as number | null,
   receiving_location_id: null as number | null,
+  customer_id: null as number | null,
+  customer_address_id: null as number | null,
   customer_name: '',
   customer_address: '',
   customer_phone: '',
@@ -711,6 +1193,7 @@ const requestForm = reactive({
   slack_notify_pickup: false,
   slack_notify_delivery: false,
   slack_channel: '',
+  items: [] as LocalItem[],
 });
 
 // Computed properties for button-based selection
@@ -763,6 +1246,20 @@ const isPickupType = computed(() => getRequestTypeName(requestForm.request_type_
 // Check if current request type is "delivery"
 const isDeliveryType = computed(() => getRequestTypeName(requestForm.request_type_id) === 'delivery');
 
+// Check if current request type is "return" (returning parts to vendor)
+const isReturnType = computed(() => getRequestTypeName(requestForm.request_type_id) === 'return');
+
+// Show vendor selection in Supplying Location section for: pickup, or when no origin shop selected (non-transfer, non-delivery, non-return)
+// Return type has its own vendor selection in the Receiving Location section
+const showPickupVendorSelection = computed(() => {
+  if (isDeliveryType.value) return false;
+  if (isReturnType.value) return false;  // Return vendor goes in receiving section
+  if (isPickupType.value) return true;
+  if (isTransferType.value) return false;
+  // For other types, show if no origin location selected
+  return !requestForm.origin_location_id;
+});
+
 // Get request type name from ID
 function getRequestTypeName(typeId: number | null): string | null {
   if (!typeId) return null;
@@ -791,6 +1288,72 @@ function toggleReceivingLocation(locId: number) {
   }
 }
 
+// Vendor selection handlers
+function handleVendorSelected(vendor: Vendor | null) {
+  selectedVendor.value = vendor;
+  if (vendor) {
+    // Clear the legacy vendor_name field when using structured vendor
+    requestForm.vendor_name = '';
+  }
+  // Clear address selection when vendor changes (VendorAddressSelect handles auto-select)
+  requestForm.vendor_address_id = null;
+}
+
+function handleVendorCreated(vendor: Vendor) {
+  selectedVendor.value = vendor;
+  requestForm.vendor_name = '';
+}
+
+function handleAddressSelected(address: Address | null) {
+  // Address selection is handled via v-model, this is for additional logic if needed
+}
+
+function handleAddressCreated(address: Address) {
+  // Refresh vendor to get updated addresses
+  if (requestForm.vendor_id) {
+    vendorsStore.fetchVendor(requestForm.vendor_id).then(vendor => {
+      selectedVendor.value = vendor;
+    });
+  }
+}
+
+// Customer selection handlers
+function handleCustomerSelected(customer: Customer | null) {
+  selectedCustomer.value = customer;
+  if (customer) {
+    // Clear the legacy customer fields when using structured customer
+    requestForm.customer_name = '';
+    requestForm.customer_address = '';
+    requestForm.customer_phone = '';
+  }
+  // Clear address selection when customer changes (CustomerAddressSelect handles auto-select)
+  requestForm.customer_address_id = null;
+}
+
+function handleCustomerCreated(customer: Customer) {
+  selectedCustomer.value = customer;
+  requestForm.customer_name = '';
+  requestForm.customer_address = '';
+  requestForm.customer_phone = '';
+}
+
+function handleCustomerAddressSelected(address: Address | null) {
+  // Address selection is handled via v-model, this is for additional logic if needed
+  // Populate phone from address if available
+  if (address?.phone && !requestForm.customer_phone) {
+    requestForm.customer_phone = address.phone;
+  }
+}
+
+function handleCustomerAddressCreated(address: Address) {
+  // Refresh customer to get updated addresses
+  if (requestForm.customer_id) {
+    customersStore.fetchCustomer(requestForm.customer_id).then(customer => {
+      selectedCustomer.value = customer;
+    });
+  }
+}
+
 // Get button style for a location based on its colors and selection state
 function getLocationButtonStyle(location: any, isSelected: boolean): Record<string, string> {
   const style: Record<string, string> = {};
@@ -814,25 +1377,64 @@ function getLocationButtonStyle(location: any, isSelected: boolean): Record<stri
   return style;
 }
 
+// Watch for items changes to auto-expand section
+watch(() => requestForm.items.length, (newLength) => {
+  if (newLength > 0) {
+    createItemsExpanded.value = true;
+  }
+});
+
 // Watch for request type changes to set smart defaults
 watch(() => requestForm.request_type_id, (newTypeId) => {
   const typeName = getRequestTypeName(newTypeId);
   const userHomeLocationId = authStore.user?.home_location_id || null;
 
-  if (typeName === 'delivery') {
-    // For delivery: user's shop is the origin (pickup from), need to set receiving
-    requestForm.origin_location_id = userHomeLocationId;
-    requestForm.receiving_location_id = null;
-    // Clear vendor since we're picking up from our shop
-    requestForm.vendor_name = '';
-  } else if (typeName === 'pickup' || typeName === 'transfer') {
-    // For pickup/transfer: user's shop is the destination (deliver to)
+  if (typeName === 'pickup') {
+    // For pickup: picking up from vendor, delivering TO user's shop
     requestForm.receiving_location_id = userHomeLocationId;
     requestForm.origin_location_id = null;
     // Clear customer details since we're delivering to our shop
     requestForm.customer_name = '';
     requestForm.customer_address = '';
     requestForm.customer_phone = '';
+    requestForm.customer_id = null;
+    requestForm.customer_address_id = null;
+    selectedCustomer.value = null;
+  } else if (typeName === 'delivery') {
+    // For delivery: picking up FROM user's shop, delivering to customer
+    requestForm.origin_location_id = userHomeLocationId;
+    requestForm.receiving_location_id = null;
+    // Clear vendor since we're picking up from our shop
+    requestForm.vendor_name = '';
+    requestForm.vendor_id = null;
+    requestForm.vendor_address_id = null;
+    selectedVendor.value = null;
+  } else if (typeName === 'transfer') {
+    // For transfer: picking up from another shop, delivering TO user's shop
+    requestForm.receiving_location_id = userHomeLocationId;
+    requestForm.origin_location_id = null;
+    // Clear vendor and customer details
+    requestForm.vendor_name = '';
+    requestForm.vendor_id = null;
+    requestForm.vendor_address_id = null;
+    selectedVendor.value = null;
+    requestForm.customer_name = '';
+    requestForm.customer_address = '';
+    requestForm.customer_phone = '';
+    requestForm.customer_id = null;
+    requestForm.customer_address_id = null;
+    selectedCustomer.value = null;
+  } else if (typeName === 'return') {
+    // For return: picking up FROM user's shop, returning to vendor
+    requestForm.origin_location_id = userHomeLocationId;
+    requestForm.receiving_location_id = null;
+    // Clear customer details since we're returning to vendor
+    requestForm.customer_name = '';
+    requestForm.customer_address = '';
+    requestForm.customer_phone = '';
+    requestForm.customer_id = null;
+    requestForm.customer_address_id = null;
+    selectedCustomer.value = null;
   }
 });
 
@@ -858,7 +1460,6 @@ registerField('urgency_id', [
 
 registerField('details', [
   validationRules.required('Please provide details about this request'),
-  validationRules.minLength(10, 'Details must be at least 10 characters'),
 ]);
 
 registerField('customer_phone', [
@@ -883,7 +1484,7 @@ const columns = [
   { name: 'details', label: 'Details', field: 'details', align: 'left' as const },
   { name: 'urgency', label: 'Urgency', field: 'urgency', align: 'center' as const },
   { name: 'status', label: 'Status', field: 'status', align: 'center' as const },
-  { name: 'runner', label: 'Runner', field: 'assigned_runner', align: 'left' as const },
+  { name: 'assigned_run', label: 'Assigned Run', field: 'run_instance', align: 'left' as const },
   { name: 'requested_by', label: 'Requested By', field: 'requested_by', align: 'left' as const },
   { name: 'actions', label: '', field: 'actions', align: 'right' as const },
 ];
@@ -897,6 +1498,7 @@ function getTypeLabel(type: string): string {
     pickup: 'Pickup',
     delivery: 'Delivery',
     transfer: 'Transfer',
+    return: 'Return',
   };
   return labels[type] || type;
 }
@@ -906,6 +1508,7 @@ function getTypeColor(type: string): string {
     pickup: 'blue',
     delivery: 'green',
     transfer: 'orange',
+    return: 'red',
   };
   return colors[type] || 'grey';
 }
@@ -924,6 +1527,7 @@ function getStatusColor(status: string): string {
     delivered: 'positive',
     canceled: 'grey',
     problem: 'negative',
+    return: 'red',
   };
   return colors[status] || 'grey';
 }
@@ -949,15 +1553,43 @@ function getUrgencyLabel(urgency: string): string {
 }
 
 function getOriginText(request: PartsRequest): string {
+  // For return requests: origin is the shop (origin_location), destination is the vendor
+  if (request.request_type?.name === 'return') {
+    return request.origin_location?.name || 'Unknown Shop';
+  }
+  // For other requests: origin is vendor or origin_location
+  if (request.vendor) {
+    return request.vendor.name;
+  }
   return request.vendor_name || request.origin_location?.name || request.origin_address || 'Unknown';
 }
 
 function getDestinationText(request: PartsRequest): string {
+  // For return requests: destination is the vendor (where we're returning TO)
+  if (request.request_type?.name === 'return') {
+    if (request.vendor) {
+      return request.vendor.name;
+    }
+    return request.vendor_name || 'Unknown Vendor';
+  }
+  // For other requests: destination is customer or receiving_location
   return request.customer_name || request.receiving_location?.name || request.customer_address || 'Unknown';
 }
 
 function formatDateTime(dateString: string): string {
   return new Date(dateString).toLocaleString();
+}
+
+function formatTime(timeString: string | undefined | null): string {
+  if (!timeString) return ''
+  // Handle HH:mm:ss or HH:mm format
+  const parts = timeString.split(':')
+  const hours = parts[0] ?? '0'
+  const minutes = parts[1] ?? '00'
+  const hour = parseInt(hours, 10)
+  const ampm = hour >= 12 ? 'PM' : 'AM'
+  const hour12 = hour % 12 || 12
+  return `${hour12}:${minutes} ${ampm}`
 }
 
 function getEventDisplayName(eventType: string): string {
@@ -976,6 +1608,97 @@ function getEventDisplayName(eventType: string): string {
     note_added: 'Note Added',
   };
   return names[eventType] || eventType;
+}
+
+// Pending document helpers
+function triggerPendingFileInput() {
+  pendingFileInputRef.value?.click();
+}
+
+function handlePendingFileSelect(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const files = input.files;
+  if (files) {
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (file) {
+        pendingDocuments.value.push({
+          file,
+          description: '',
+        });
+      }
+    }
+    // Auto-expand section when files are added
+    if (pendingDocuments.value.length > 0) {
+      createDocumentsExpanded.value = true;
+    }
+  }
+  // Reset input so same file can be selected again
+  input.value = '';
+}
+
+function removePendingDocument(index: number) {
+  pendingDocuments.value.splice(index, 1);
+}
+
+function getPendingDocIcon(file: File): string {
+  const type = file.type;
+  if (type.startsWith('image/')) return 'image';
+  if (type === 'application/pdf') return 'picture_as_pdf';
+
+  const ext = file.name.split('.').pop()?.toLowerCase();
+  switch (ext) {
+    case 'doc':
+    case 'docx':
+      return 'description';
+    case 'xls':
+    case 'xlsx':
+      return 'table_chart';
+    case 'txt':
+      return 'article';
+    default:
+      return 'insert_drive_file';
+  }
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+// Pending image helpers
+function triggerPendingImageInput() {
+  pendingImageInputRef.value?.click();
+}
+
+function handlePendingImageSelect(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const files = input.files;
+  if (files) {
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (file && file.type.startsWith('image/')) {
+        // Create preview URL
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          pendingImages.value.push({
+            file,
+            preview: e.target?.result as string,
+          });
+          // Auto-expand section when images are added
+          createPhotosExpanded.value = true;
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+  }
+  // Reset input so same file can be selected again
+  input.value = '';
+}
+
+function removePendingImage(index: number) {
+  pendingImages.value.splice(index, 1);
 }
 
 async function fetchRequests() {
@@ -1027,8 +1750,12 @@ function openCreateDialog() {
     not_before_datetime: null,
     origin_location_id: null,
     vendor_name: '',
+    vendor_id: null,
+    vendor_address_id: null,
     // Default receiving location to user's home shop (for pickup requests)
     receiving_location_id: userHomeLocationId,
+    customer_id: null,
+    customer_address_id: null,
     customer_name: '',
     customer_address: '',
     customer_phone: '',
@@ -1037,9 +1764,25 @@ function openCreateDialog() {
     slack_notify_pickup: false,
     slack_notify_delivery: false,
     slack_channel: '',
+    items: [] as LocalItem[],
   };
 
   Object.assign(requestForm, defaults);
+
+  // Reset vendor selection state
+  selectedVendor.value = null;
+
+  // Reset customer selection state
+  selectedCustomer.value = null;
+
+  // Reset pending documents and images
+  pendingDocuments.value = [];
+  pendingImages.value = [];
+
+  // Reset expansion states (default collapsed)
+  createItemsExpanded.value = false;
+  createDocumentsExpanded.value = false;
+  createPhotosExpanded.value = false;
 
   // Sync default values to validation system so they're recognized on submit
   updateField('request_type_id', defaults.request_type_id);
@@ -1051,7 +1794,34 @@ function openCreateDialog() {
 
 async function submitCreateForm() {
   await handleSubmit(async () => {
-    await partsRequestsStore.createRequest(requestForm);
+    const newRequest = await partsRequestsStore.createRequest(requestForm);
+
+    // Upload pending documents if any
+    if (pendingDocuments.value.length > 0 && newRequest?.id) {
+      for (const doc of pendingDocuments.value) {
+        try {
+          await partsRequestsStore.uploadDocument(newRequest.id, doc.file, doc.description || undefined);
+        } catch (error) {
+          console.error('Failed to upload document:', doc.file.name, error);
+          // Continue uploading other documents even if one fails
+        }
+      }
+      pendingDocuments.value = [];
+    }
+
+    // Upload pending images if any
+    if (pendingImages.value.length > 0 && newRequest?.id) {
+      for (const img of pendingImages.value) {
+        try {
+          await partsRequestsStore.uploadImage(newRequest.id, img.file, { source: 'requester' });
+        } catch (error) {
+          console.error('Failed to upload image:', img.file.name, error);
+          // Continue uploading other images even if one fails
+        }
+      }
+      pendingImages.value = [];
+    }
+
     showCreateDialog.value = false;
     clearDraft();
     await fetchRequests();
@@ -1086,6 +1856,43 @@ async function unassignRunner(request: PartsRequest) {
 }
 
 async function viewRequest(request: PartsRequest) {
+  // Reset expansion states and counts
+  itemsExpanded.value = false;
+  documentsExpanded.value = false;
+  photosExpanded.value = false;
+  runnerPhotosExpanded.value = false;
+  itemsCount.value = 0;
+  documentsCount.value = 0;
+  photosCount.value = 0;
+  runnerPhotosCount.value = 0;
+
+  viewingRequest.value = await partsRequestsStore.fetchRequest(request.id);
+  showViewDialog.value = true;
+}
+
+// Handlers for expansion item counts - expand when data exists
+function onItemsCountChanged(count: number) {
+  itemsCount.value = count;
+  if (count > 0) itemsExpanded.value = true;
+}
+
+function onDocumentsCountChanged(count: number) {
+  documentsCount.value = count;
+  if (count > 0) documentsExpanded.value = true;
+}
+
+function onPhotosCountChanged(count: number) {
+  photosCount.value = count;
+  if (count > 0) photosExpanded.value = true;
+}
+
+function onRunnerPhotosCountChanged(count: number) {
+  runnerPhotosCount.value = count;
+  if (count > 0) runnerPhotosExpanded.value = true;
+}
+
+async function openDocuments(request: PartsRequest) {
+  // Opens same view dialog - documents are now on the same page
   viewingRequest.value = await partsRequestsStore.fetchRequest(request.id);
   showViewDialog.value = true;
 }
@@ -1130,3 +1937,66 @@ onMounted(async () => {
   await loadLocations();
 });
 </script>
+
+<style scoped>
+/* View Dialog Content - prevent horizontal overflow */
+.view-dialog-content {
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.view-section {
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+  min-width: 0;
+}
+
+/* Ensure nested components don't overflow */
+.view-section :deep(.q-list) {
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.view-section :deep(.q-item) {
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.view-section :deep(.q-item__section--main) {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.view-section :deep(.q-item__label) {
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+/* Pending images grid for create form */
+.pending-images-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+@media (max-width: 400px) {
+  .pending-images-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.pending-image-thumb {
+  position: relative;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.pending-image-thumb .remove-image-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 1;
+}
+</style>

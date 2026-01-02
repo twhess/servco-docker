@@ -113,6 +113,9 @@ class AuthController extends Controller
 
         $token = $user->createToken('auth_token')->plainTextToken;
 
+        // Load homeLocation for the response
+        $user->load('homeLocation');
+
         return response()->json([
             'user' => $user,
             'token' => $token,
@@ -132,7 +135,7 @@ class AuthController extends Controller
 
     public function user(Request $request)
     {
-        $user = $request->user();
+        $user = $request->user()->load('homeLocation');
         return response()->json([
             'user' => $user,
             'abilities' => $user->getAbilities(),

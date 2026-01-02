@@ -5,7 +5,8 @@
       "Bash(docker exec:*)",
       "Bash(php artisan:*)",
       "Bash(curl:*)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(docker ps:*)"
     ]
   }
 }

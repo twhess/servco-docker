@@ -18,9 +18,13 @@ class PartsRequest extends Model
         'request_type_id',
         'reference_number',
         'vendor_name',
+        'vendor_id',
+        'vendor_address_id',
         'customer_name',
         'customer_phone',
         'customer_address',
+        'customer_id',
+        'customer_address_id',
         'customer_lat',
         'customer_lng',
         'origin_location_id',
@@ -120,6 +124,38 @@ class PartsRequest extends Model
         return $this->belongsTo(LocationArea::class, 'receiving_area_id');
     }
 
+    /**
+     * Vendor for this request (replaces vendor_name)
+     */
+    public function vendor(): BelongsTo
+    {
+        return $this->belongsTo(Vendor::class);
+    }
+
+    /**
+     * Specific vendor address for pickup
+     */
+    public function vendorAddress(): BelongsTo
+    {
+        return $this->belongsTo(Address::class, 'vendor_address_id');
+    }
+
+    /**
+     * Customer for delivery requests
+     */
+    public function customer(): BelongsTo
+    {
+        return $this->belongsTo(Customer::class);
+    }
+
+    /**
+     * Specific customer address for delivery
+     */
+    public function customerAddress(): BelongsTo
+    {
+        return $this->belongsTo(Address::class, 'customer_address_id');
+    }
+
     public function requestedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'requested_by_user_id');
@@ -148,6 +184,50 @@ class PartsRequest extends Model
     public function locations(): HasMany
     {
         return $this->hasMany(PartsRequestLocation::class)->orderBy('captured_at', 'desc');
+    }
+
+    /**
+     * Line items for this request
+     */
+    public function items(): HasMany
+    {
+        return $this->hasMany(PartsRequestItem::class)->orderBy('sort_order');
+    }
+
+    /**
+     * Documents attached to this request
+     */
+    public function documents(): HasMany
+    {
+        return $this->hasMany(PartsRequestDocument::class)->orderBy('uploaded_at', 'desc');
+    }
+
+    /**
+     * Images attached to this request (all sources)
+     */
+    public function images(): HasMany
+    {
+        return $this->hasMany(PartsRequestImage::class)->orderBy('uploaded_at', 'desc');
+    }
+
+    /**
+     * Requester-uploaded info images
+     */
+    public function requesterImages(): HasMany
+    {
+        return $this->hasMany(PartsRequestImage::class)
+            ->where('source', PartsRequestImage::SOURCE_REQUESTER)
+            ->orderBy('uploaded_at', 'desc');
+    }
+
+    /**
+     * Runner-uploaded images (pickup + delivery)
+     */
+    public function runnerImages(): HasMany
+    {
+        return $this->hasMany(PartsRequestImage::class)
+            ->whereIn('source', [PartsRequestImage::SOURCE_PICKUP, PartsRequestImage::SOURCE_DELIVERY])
+            ->orderBy('uploaded_at', 'desc');
     }
 
     /**
@@ -362,6 +442,51 @@ class PartsRequest extends Model
     public function hasDeliveryPhoto(): bool
     {
         return $this->photos()->where('stage', 'delivery')->exists();
+    }
+
+    /**
+     * Check if request has line items
+     */
+    public function hasItems(): bool
+    {
+        return $this->items()->exists();
+    }
+
+    /**
+     * Get count of verified items
+     */
+    public function verifiedItemsCount(): int
+    {
+        return $this->items()->where('is_verified', true)->count();
+    }
+
+    /**
+     * Check if all items are verified
+     */
+    public function allItemsVerified(): bool
+    {
+        if (!$this->hasItems()) {
+            return true;
+        }
+        return $this->items()->where('is_verified', false)->doesntExist();
+    }
+
+    /**
+     * Get items summary string (e.g., "3 items (2 verified)")
+     */
+    public function getItemsSummary(): string
+    {
+        $total = $this->items()->count();
+        if ($total === 0) {
+            return 'No items';
+        }
+
+        $verified = $this->verifiedItemsCount();
+        if ($verified === $total) {
+            return "{$total} item" . ($total > 1 ? 's' : '') . " (all verified)";
+        }
+
+        return "{$total} item" . ($total > 1 ? 's' : '') . " ({$verified} verified)";
     }
 
     public function getOriginCoordinates(): ?array

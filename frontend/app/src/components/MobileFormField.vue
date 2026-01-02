@@ -160,6 +160,12 @@
             />
           </q-popup-proxy>
         </q-icon>
+        <q-icon
+          v-if="clearable && modelValue"
+          name="cancel"
+          class="cursor-pointer q-ml-sm"
+          @click.stop="handleClear"
+        />
       </template>
     </q-input>
   </div>
@@ -186,6 +192,7 @@ interface Props {
   required?: boolean;
   autofocus?: boolean;
   rows?: number;
+  clearable?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -194,6 +201,7 @@ const props = withDefaults(defineProps<Props>(), {
   disable: false,
   required: false,
   autofocus: false,
+  clearable: false,
 });
 
 const emit = defineEmits<{
@@ -207,6 +215,10 @@ const handleInput = (value: any) => {
 
 const handleBlur = () => {
   emit('blur');
+};
+
+const handleClear = () => {
+  emit('update:modelValue', null);
 };
 
 /**

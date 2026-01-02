@@ -32,16 +32,35 @@ export interface RunNote {
   updated_at: string
 }
 
+export interface RouteSchedule {
+  id: number
+  route_id: number
+  scheduled_time: string
+  name: string | null
+  is_active: boolean
+  display_name?: string
+}
+
+export interface ServiceLocation {
+  id: number
+  name: string
+  location_type: string
+}
+
 export interface RunInstance {
   id: number
   route_id: number
   route?: Route
+  route_schedule_id: number | null
+  schedule?: RouteSchedule
+  is_on_demand?: boolean
+  display_name?: string
   scheduled_date: string
   scheduled_time: string
   assigned_runner_user_id: number | null
   assigned_runner?: User
   assigned_vehicle_location_id: number | null
-  assigned_vehicle?: any
+  assigned_vehicle?: ServiceLocation
   status: 'pending' | 'in_progress' | 'completed' | 'canceled'
   actual_start_at: string | null
   actual_end_at: string | null

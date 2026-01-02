@@ -1,6 +1,7 @@
 <?php
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\AddressController;
 use App\Http\Controllers\AuditLogController;
 use App\Http\Controllers\ServiceLocationController;
 use App\Http\Controllers\PartsRequestController;
@@ -8,6 +9,11 @@ use App\Http\Controllers\RoleController;
 use App\Http\Controllers\RouteController;
 use App\Http\Controllers\RunInstanceController;
 use App\Http\Controllers\ItemController;
+use App\Http\Controllers\ClosedDateController;
+use App\Http\Controllers\VendorController;
+use App\Http\Controllers\CustomerController;
+use App\Http\Controllers\CustomerImportController;
+use App\Http\Controllers\CustomerMergeController;
 
 Route::get('/health', function () {
     return response()->json(['ok' => true]);
@@ -74,6 +80,31 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/parts-requests/{id}/location', [PartsRequestController::class, 'postLocation']);
     Route::get('/parts-requests/{id}/tracking', [PartsRequestController::class, 'tracking']);
 
+    // Parts Request Line Items
+    Route::get('/parts-requests/{id}/items', [PartsRequestController::class, 'items']);
+    Route::post('/parts-requests/{id}/items', [PartsRequestController::class, 'addItem']);
+    Route::put('/parts-requests/{id}/items/{itemId}', [PartsRequestController::class, 'updateItem']);
+    Route::delete('/parts-requests/{id}/items/{itemId}', [PartsRequestController::class, 'removeItem']);
+    Route::post('/parts-requests/{id}/items/{itemId}/verify', [PartsRequestController::class, 'verifyItem']);
+    Route::post('/parts-requests/{id}/items/{itemId}/unverify', [PartsRequestController::class, 'unverifyItem']);
+    Route::put('/parts-requests/{id}/items/reorder', [PartsRequestController::class, 'reorderItems']);
+
+    // Parts Request Documents
+    Route::get('/parts-requests/{id}/documents', [PartsRequestController::class, 'documents']);
+    Route::post('/parts-requests/{id}/documents', [PartsRequestController::class, 'uploadDocument']);
+    Route::get('/parts-requests/{id}/documents/{documentId}', [PartsRequestController::class, 'showDocument']);
+    Route::put('/parts-requests/{id}/documents/{documentId}', [PartsRequestController::class, 'updateDocument']);
+    Route::delete('/parts-requests/{id}/documents/{documentId}', [PartsRequestController::class, 'deleteDocument']);
+    Route::get('/parts-requests/{id}/documents/{documentId}/download', [PartsRequestController::class, 'downloadDocument']);
+
+    // Parts Request Images
+    Route::get('/parts-requests/{id}/images', [PartsRequestController::class, 'images']);
+    Route::post('/parts-requests/{id}/images', [PartsRequestController::class, 'uploadImage']);
+    Route::get('/parts-requests/{id}/images/{imageId}', [PartsRequestController::class, 'showImage']);
+    Route::get('/parts-requests/{id}/images/{imageId}/thumbnail', [PartsRequestController::class, 'showImageThumbnail']);
+    Route::put('/parts-requests/{id}/images/{imageId}', [PartsRequestController::class, 'updateImage']);
+    Route::delete('/parts-requests/{id}/images/{imageId}', [PartsRequestController::class, 'deleteImage']);
+
     // Roles & Permissions
     Route::get('/roles', [RoleController::class, 'index']);
     Route::get('/roles/{id}', [RoleController::class, 'show']);
@@ -109,6 +140,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Route Schedules Management
     Route::post('/routes/{id}/schedules', [RouteController::class, 'addSchedule']);
+    Route::put('/routes/{id}/schedules/{scheduleId}', [RouteController::class, 'updateSchedule']);
     Route::delete('/routes/{id}/schedules/{scheduleId}', [RouteController::class, 'removeSchedule']);
 
     // Route Graph & Pathfinding
@@ -118,10 +150,12 @@ Route::middleware('auth:sanctum')->group(function () {
     // Run Instances
     Route::get('/runs', [RunInstanceController::class, 'index']);
     Route::get('/runs/my-runs', [RunInstanceController::class, 'myRuns']);
+    Route::post('/runs/create-on-demand', [RunInstanceController::class, 'createOnDemand']);
     Route::get('/runs/{id}', [RunInstanceController::class, 'show']);
     Route::post('/runs/{id}/assign', [RunInstanceController::class, 'assign']);
     Route::post('/runs/{id}/start', [RunInstanceController::class, 'start']);
     Route::post('/runs/{id}/complete', [RunInstanceController::class, 'complete']);
+    Route::post('/runs/{id}/merge/{sourceId}', [RunInstanceController::class, 'merge']);
     Route::put('/runs/{id}/current-stop', [RunInstanceController::class, 'updateCurrentStop']);
 
     // Run Stop Tracking
@@ -147,4 +181,66 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/items/scan/{qrCode}', [ItemController::class, 'scan']);
     Route::get('/items/{id}/movement-history', [ItemController::class, 'movementHistory']);
     Route::get('/items/{id}/current-request', [ItemController::class, 'currentRequest']);
+
+    // Closed Dates (Business Calendar)
+    Route::get('/closed-dates', [ClosedDateController::class, 'index']);
+    Route::post('/closed-dates', [ClosedDateController::class, 'store']);
+    Route::get('/closed-dates/check', [ClosedDateController::class, 'checkDate']);
+    Route::get('/closed-dates/{id}', [ClosedDateController::class, 'show']);
+    Route::put('/closed-dates/{id}', [ClosedDateController::class, 'update']);
+    Route::delete('/closed-dates/{id}', [ClosedDateController::class, 'destroy']);
+
+    // ==========================================
+    // VENDORS & ADDRESSES
+    // ==========================================
+
+    // Vendors
+    Route::get('/vendors', [VendorController::class, 'index']);
+    Route::get('/vendors/search', [VendorController::class, 'search']);
+    Route::post('/vendors/check-duplicate', [VendorController::class, 'checkDuplicate']);
+    Route::post('/vendors', [VendorController::class, 'store']);
+    Route::get('/vendors/{id}', [VendorController::class, 'show']);
+    Route::put('/vendors/{id}', [VendorController::class, 'update']);
+    Route::delete('/vendors/{id}', [VendorController::class, 'destroy']);
+
+    // Vendor Addresses
+    Route::post('/vendors/{id}/addresses', [VendorController::class, 'attachAddress']);
+    Route::put('/vendors/{id}/addresses/{addressId}', [VendorController::class, 'updateAddressPivot']);
+    Route::delete('/vendors/{id}/addresses/{addressId}', [VendorController::class, 'detachAddress']);
+
+    // Addresses (standalone)
+    Route::apiResource('addresses', AddressController::class);
+
+    // ==========================================
+    // CUSTOMERS
+    // ==========================================
+
+    // Customers
+    Route::get('/customers', [CustomerController::class, 'index']);
+    Route::get('/customers/search', [CustomerController::class, 'search']);
+    Route::post('/customers/check-duplicate', [CustomerController::class, 'checkDuplicate']);
+    Route::post('/customers', [CustomerController::class, 'store']);
+    Route::get('/customers/{id}', [CustomerController::class, 'show']);
+    Route::put('/customers/{id}', [CustomerController::class, 'update']);
+    Route::delete('/customers/{id}', [CustomerController::class, 'destroy']);
+
+    // Customer Addresses
+    Route::post('/customers/{id}/addresses', [CustomerController::class, 'attachAddress']);
+    Route::put('/customers/{id}/addresses/{addressId}', [CustomerController::class, 'updateAddressPivot']);
+    Route::delete('/customers/{id}/addresses/{addressId}', [CustomerController::class, 'detachAddress']);
+
+    // Customer Imports
+    Route::get('/customer-imports', [CustomerImportController::class, 'index']);
+    Route::post('/customer-imports', [CustomerImportController::class, 'store']);
+    Route::get('/customer-imports/{id}', [CustomerImportController::class, 'show']);
+    Route::get('/customer-imports/{id}/rows', [CustomerImportController::class, 'rows']);
+    Route::post('/customer-imports/{id}/process', [CustomerImportController::class, 'process']);
+    Route::delete('/customer-imports/{id}', [CustomerImportController::class, 'destroy']);
+
+    // Customer Merge Candidates
+    Route::get('/customer-merges', [CustomerMergeController::class, 'index']);
+    Route::get('/customer-merges/summary', [CustomerMergeController::class, 'summary']);
+    Route::get('/customer-merges/{id}', [CustomerMergeController::class, 'show']);
+    Route::post('/customer-merges/{id}/resolve', [CustomerMergeController::class, 'resolve']);
+    Route::post('/customer-merges/batch-resolve', [CustomerMergeController::class, 'batchResolve']);
 });

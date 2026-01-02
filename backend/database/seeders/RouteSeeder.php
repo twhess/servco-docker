@@ -174,20 +174,49 @@ class RouteSeeder extends Seeder
     /**
      * Add route schedules
      */
-    private function addSchedules(int $routeId, array $times): void
+    private function addSchedules(int $routeId, array $schedules): void
     {
         $now = Carbon::now();
         $userId = DB::table('users')->where('email', 'like', '%admin%')->first()->id ?? 1;
 
-        foreach ($times as $time) {
+        foreach ($schedules as $schedule) {
+            // Support both simple time strings and arrays with time and name
+            if (is_array($schedule)) {
+                $time = $schedule['time'];
+                $name = $schedule['name'];
+            } else {
+                $time = $schedule;
+                $name = $this->getDefaultScheduleName($schedule);
+            }
+
             DB::table('route_schedules')->insert([
                 'route_id' => $routeId,
                 'scheduled_time' => $time,
+                'name' => $name,
+                'is_active' => true,
                 'created_by' => $userId,
                 'updated_by' => $userId,
                 'created_at' => $now,
                 'updated_at' => $now,
             ]);
+        }
+    }
+
+    /**
+     * Get default schedule name based on time
+     */
+    private function getDefaultScheduleName(string $time): string
+    {
+        $hour = (int) substr($time, 0, 2);
+
+        if ($hour >= 5 && $hour < 12) {
+            return 'Morning';
+        } elseif ($hour >= 12 && $hour < 17) {
+            return 'Afternoon';
+        } elseif ($hour >= 17 && $hour < 21) {
+            return 'Evening';
+        } else {
+            return 'Night';
         }
     }
 }

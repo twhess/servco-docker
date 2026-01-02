@@ -9,6 +9,14 @@ export interface PartsRequest {
   status: { id: number; name: string };
   urgency: { id: number; name: string };
   vendor_name: string | null;
+  vendor_id: number | null;
+  vendor?: { id: number; name: string; phone?: string | null } | null;
+  vendor_address_id: number | null;
+  vendor_address?: { id: number; line1: string; city: string; state: string; one_line_address?: string; instructions?: string | null } | null;
+  customer_id: number | null;
+  customer?: { id: number; formatted_name: string; company_name: string; phone?: string | null } | null;
+  customer_address_id: number | null;
+  customer_address_obj?: { id: number; line1: string; city: string; state: string; one_line_address?: string; phone?: string | null } | null;
   customer_name: string | null;
   customer_phone: string | null;
   customer_address: string | null;
@@ -47,6 +55,8 @@ export interface PartsRequest {
   override_at: string | null;
   is_archived: boolean;
   archived_at: string | null;
+  // Line items
+  items?: PartsRequestItem[];
 }
 
 export interface PartsRequestEvent {
@@ -66,6 +76,69 @@ export interface PartsRequestPhoto {
   lat: number | null;
   lng: number | null;
   notes: string | null;
+}
+
+export interface PartsRequestItem {
+  id: number;
+  parts_request_id: number;
+  description: string;
+  quantity: number;
+  part_number: string | null;
+  notes: string | null;
+  is_verified: boolean;
+  verified_by_user_id: number | null;
+  verified_by?: { id: number; name: string } | null;
+  verified_at: string | null;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PartsRequestDocument {
+  id: number;
+  parts_request_id: number;
+  original_filename: string;
+  stored_filename: string;
+  file_path: string;
+  mime_type: string;
+  file_size: number;
+  formatted_file_size: string;
+  description: string | null;
+  uploaded_by_user_id: number | null;
+  uploaded_by?: { id: number; name: string } | null;
+  uploaded_at: string;
+  url: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export type ImageSource = 'requester' | 'pickup' | 'delivery';
+
+export interface PartsRequestImage {
+  id: number;
+  parts_request_id: number;
+  source: ImageSource;
+  original_filename: string;
+  stored_filename: string;
+  file_path: string;
+  thumbnail_path: string | null;
+  mime_type: string;
+  file_size: number;
+  original_size: number | null;
+  formatted_file_size: string;
+  width: number | null;
+  height: number | null;
+  caption: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  taken_at: string | null;
+  uploaded_by_user_id: number | null;
+  uploaded_by?: { id: number; name: string } | null;
+  uploaded_at: string;
+  url: string;
+  thumbnail_url: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export const usePartsRequestsStore = defineStore('partsRequests', {
@@ -496,6 +569,305 @@ export const usePartsRequestsStore = defineStore('partsRequests', {
       } finally {
         this.loading = false;
       }
+    },
+
+    // ==========================================
+    // LINE ITEMS ACTIONS
+    // ==========================================
+
+    async fetchItems(requestId: number): Promise<PartsRequestItem[]> {
+      try {
+        const response = await api.get(`/parts-requests/${requestId}/items`);
+        return response.data.data;
+      } catch (error: any) {
+        Notify.create({
+          type: 'negative',
+          message: error.response?.data?.message || 'Failed to load items',
+        });
+        throw error;
+      }
+    },
+
+    async addItem(requestId: number, item: { description: string; quantity: number; part_number?: string | undefined; notes?: string | undefined }) {
+      try {
+        const response = await api.post(`/parts-requests/${requestId}/items`, item);
+        Notify.create({
+          type: 'positive',
+          message: response.data.message || 'Item added successfully',
+        });
+        return response.data.data as PartsRequestItem;
+      } catch (error: any) {
+        Notify.create({
+          type: 'negative',
+          message: error.response?.data?.message || 'Failed to add item',
+        });
+        throw error;
+      }
+    },
+
+    async updateItem(requestId: number, itemId: number, data: Partial<PartsRequestItem>) {
+      try {
+        const response = await api.put(`/parts-requests/${requestId}/items/${itemId}`, data);
+        Notify.create({
+          type: 'positive',
+          message: response.data.message || 'Item updated successfully',
+        });
+        return response.data.data as PartsRequestItem;
+      } catch (error: any) {
+        Notify.create({
+          type: 'negative',
+          message: error.response?.data?.message || 'Failed to update item',
+        });
+        throw error;
+      }
+    },
+
+    async removeItem(requestId: number, itemId: number) {
+      try {
+        const response = await api.delete(`/parts-requests/${requestId}/items/${itemId}`);
+        Notify.create({
+          type: 'positive',
+          message: response.data.message || 'Item removed successfully',
+        });
+      } catch (error: any) {
+        Notify.create({
+          type: 'negative',
+          message: error.response?.data?.message || 'Failed to remove item',
+        });
+        throw error;
+      }
+    },
+
+    async verifyItem(requestId: number, itemId: number): Promise<PartsRequestItem> {
+      try {
+        const response = await api.post(`/parts-requests/${requestId}/items/${itemId}/verify`);
+        Notify.create({
+          type: 'positive',
+          message: response.data.message || 'Item verified successfully',
+        });
+        return response.data.data as PartsRequestItem;
+      } catch (error: any) {
+        Notify.create({
+          type: 'negative',
+          message: error.response?.data?.message || 'Failed to verify item',
+        });
+        throw error;
+      }
+    },
+
+    async unverifyItem(requestId: number, itemId: number): Promise<PartsRequestItem> {
+      try {
+        const response = await api.post(`/parts-requests/${requestId}/items/${itemId}/unverify`);
+        Notify.create({
+          type: 'positive',
+          message: response.data.message || 'Item unverified',
+        });
+        return response.data.data as PartsRequestItem;
+      } catch (error: any) {
+        Notify.create({
+          type: 'negative',
+          message: error.response?.data?.message || 'Failed to unverify item',
+        });
+        throw error;
+      }
+    },
+
+    async reorderItems(requestId: number, itemIds: number[]) {
+      try {
+        const response = await api.put(`/parts-requests/${requestId}/items/reorder`, {
+          item_ids: itemIds,
+        });
+        Notify.create({
+          type: 'positive',
+          message: response.data.message || 'Items reordered successfully',
+        });
+      } catch (error: any) {
+        Notify.create({
+          type: 'negative',
+          message: error.response?.data?.message || 'Failed to reorder items',
+        });
+        throw error;
+      }
+    },
+
+    // ==========================================
+    // DOCUMENT ACTIONS
+    // ==========================================
+
+    async fetchDocuments(requestId: number): Promise<PartsRequestDocument[]> {
+      try {
+        const response = await api.get(`/parts-requests/${requestId}/documents`);
+        return response.data.data;
+      } catch (error: any) {
+        Notify.create({
+          type: 'negative',
+          message: error.response?.data?.message || 'Failed to load documents',
+        });
+        throw error;
+      }
+    },
+
+    async uploadDocument(requestId: number, file: File, description?: string): Promise<PartsRequestDocument> {
+      const formData = new FormData();
+      formData.append('file', file);
+      if (description) {
+        formData.append('description', description);
+      }
+
+      try {
+        const response = await api.post(`/parts-requests/${requestId}/documents`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        Notify.create({
+          type: 'positive',
+          message: response.data.message || 'Document uploaded successfully',
+        });
+        return response.data.data as PartsRequestDocument;
+      } catch (error: any) {
+        Notify.create({
+          type: 'negative',
+          message: error.response?.data?.message || 'Failed to upload document',
+        });
+        throw error;
+      }
+    },
+
+    async updateDocument(requestId: number, documentId: number, description: string | null): Promise<PartsRequestDocument> {
+      try {
+        const response = await api.put(`/parts-requests/${requestId}/documents/${documentId}`, {
+          description,
+        });
+        Notify.create({
+          type: 'positive',
+          message: response.data.message || 'Document updated successfully',
+        });
+        return response.data.data as PartsRequestDocument;
+      } catch (error: any) {
+        Notify.create({
+          type: 'negative',
+          message: error.response?.data?.message || 'Failed to update document',
+        });
+        throw error;
+      }
+    },
+
+    async deleteDocument(requestId: number, documentId: number): Promise<void> {
+      try {
+        const response = await api.delete(`/parts-requests/${requestId}/documents/${documentId}`);
+        Notify.create({
+          type: 'positive',
+          message: response.data.message || 'Document deleted successfully',
+        });
+      } catch (error: any) {
+        Notify.create({
+          type: 'negative',
+          message: error.response?.data?.message || 'Failed to delete document',
+        });
+        throw error;
+      }
+    },
+
+    getDocumentDownloadUrl(requestId: number, documentId: number): string {
+      return `${api.defaults.baseURL}/parts-requests/${requestId}/documents/${documentId}/download`;
+    },
+
+    // ==========================================
+    // IMAGE ACTIONS
+    // ==========================================
+
+    async fetchImages(requestId: number, source?: ImageSource): Promise<PartsRequestImage[]> {
+      try {
+        const params = source ? { source } : {};
+        const response = await api.get(`/parts-requests/${requestId}/images`, { params });
+        return response.data.data;
+      } catch (error: any) {
+        Notify.create({
+          type: 'negative',
+          message: error.response?.data?.message || 'Failed to load images',
+        });
+        throw error;
+      }
+    },
+
+    async uploadImage(
+      requestId: number,
+      file: File,
+      options?: { source?: ImageSource; caption?: string; latitude?: number; longitude?: number }
+    ): Promise<PartsRequestImage> {
+      const formData = new FormData();
+      formData.append('image', file);
+      if (options?.source) {
+        formData.append('source', options.source);
+      }
+      if (options?.caption) {
+        formData.append('caption', options.caption);
+      }
+      if (options?.latitude !== undefined) {
+        formData.append('latitude', String(options.latitude));
+      }
+      if (options?.longitude !== undefined) {
+        formData.append('longitude', String(options.longitude));
+      }
+
+      try {
+        const response = await api.post(`/parts-requests/${requestId}/images`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        Notify.create({
+          type: 'positive',
+          message: response.data.message || 'Image uploaded successfully',
+        });
+        return response.data.data as PartsRequestImage;
+      } catch (error: any) {
+        Notify.create({
+          type: 'negative',
+          message: error.response?.data?.message || 'Failed to upload image',
+        });
+        throw error;
+      }
+    },
+
+    async updateImage(requestId: number, imageId: number, caption: string | null): Promise<PartsRequestImage> {
+      try {
+        const response = await api.put(`/parts-requests/${requestId}/images/${imageId}`, {
+          caption,
+        });
+        Notify.create({
+          type: 'positive',
+          message: response.data.message || 'Image updated successfully',
+        });
+        return response.data.data as PartsRequestImage;
+      } catch (error: any) {
+        Notify.create({
+          type: 'negative',
+          message: error.response?.data?.message || 'Failed to update image',
+        });
+        throw error;
+      }
+    },
+
+    async deleteImage(requestId: number, imageId: number): Promise<void> {
+      try {
+        const response = await api.delete(`/parts-requests/${requestId}/images/${imageId}`);
+        Notify.create({
+          type: 'positive',
+          message: response.data.message || 'Image deleted successfully',
+        });
+      } catch (error: any) {
+        Notify.create({
+          type: 'negative',
+          message: error.response?.data?.message || 'Failed to delete image',
+        });
+        throw error;
+      }
+    },
+
+    getImageUrl(requestId: number, imageId: number): string {
+      return `${api.defaults.baseURL}/parts-requests/${requestId}/images/${imageId}`;
+    },
+
+    getImageThumbnailUrl(requestId: number, imageId: number): string {
+      return `${api.defaults.baseURL}/parts-requests/${requestId}/images/${imageId}/thumbnail`;
     },
   },
 });

@@ -16,6 +16,8 @@ class RunInstance extends Model
         'route_id',
         'scheduled_date',
         'scheduled_time',
+        'route_schedule_id',
+        'is_on_demand',
         'assigned_runner_user_id',
         'assigned_vehicle_location_id',
         'status',
@@ -31,6 +33,7 @@ class RunInstance extends Model
         'scheduled_time' => 'datetime:H:i',
         'actual_start_at' => 'datetime',
         'actual_end_at' => 'datetime',
+        'is_on_demand' => 'boolean',
     ];
 
     // Relationships
@@ -41,6 +44,25 @@ class RunInstance extends Model
     public function route(): BelongsTo
     {
         return $this->belongsTo(Route::class);
+    }
+
+    /**
+     * The schedule this run was created from
+     */
+    public function schedule(): BelongsTo
+    {
+        return $this->belongsTo(RouteSchedule::class, 'route_schedule_id');
+    }
+
+    /**
+     * Get the display name (Route Name - Schedule Name)
+     */
+    public function getDisplayNameAttribute(): string
+    {
+        $routeName = $this->route?->name ?? 'Unknown Route';
+        $scheduleName = $this->schedule?->name;
+
+        return $scheduleName ? "{$routeName} - {$scheduleName}" : $routeName;
     }
 
     /**

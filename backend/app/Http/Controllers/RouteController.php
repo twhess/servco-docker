@@ -322,21 +322,77 @@ class RouteController extends Controller
 
         $validated = $request->validate([
             'scheduled_time' => 'required|date_format:H:i',
+            'name' => 'nullable|string|max:100',
             'is_active' => 'boolean',
+            'days_of_week' => 'sometimes|array',
+            'days_of_week.*' => 'integer|min:0|max:6',
+            'schedule_type' => 'sometimes|in:fixed,on_demand',
         ]);
 
         $validated['route_id'] = $route->id;
         $validated['created_by'] = auth()->id();
         $validated['updated_by'] = auth()->id();
 
+        // Generate default name if not provided
+        if (empty($validated['name'])) {
+            $hour = (int) substr($validated['scheduled_time'], 0, 2);
+            $validated['name'] = match (true) {
+                $hour >= 5 && $hour < 12 => 'Morning',
+                $hour >= 12 && $hour < 17 => 'Afternoon',
+                $hour >= 17 && $hour < 21 => 'Evening',
+                default => 'Night',
+            };
+        }
+
+        // Default to weekdays if not specified (only for fixed schedules)
+        if (!isset($validated['days_of_week'])) {
+            $validated['days_of_week'] = [1, 2, 3, 4, 5];
+        }
+
+        // Default to fixed schedule type
+        if (!isset($validated['schedule_type'])) {
+            $validated['schedule_type'] = RouteSchedule::TYPE_FIXED;
+        }
+
         $schedule = RouteSchedule::create($validated);
 
-        Log::info("Schedule added to route #{$route->id}: {$validated['scheduled_time']}");
+        Log::info("Schedule added to route #{$route->id}: {$validated['scheduled_time']} ({$validated['name']})");
 
         return response()->json([
             'message' => 'Schedule added successfully',
             'data' => $schedule,
         ], 201);
+    }
+
+    /**
+     * PUT /routes/{id}/schedules/{scheduleId} - Update schedule
+     */
+    public function updateSchedule(Request $request, int $id, int $scheduleId)
+    {
+        $route = Route::findOrFail($id);
+        $schedule = RouteSchedule::where('route_id', $route->id)
+            ->where('id', $scheduleId)
+            ->firstOrFail();
+
+        $validated = $request->validate([
+            'scheduled_time' => 'sometimes|date_format:H:i',
+            'name' => 'nullable|string|max:100',
+            'is_active' => 'boolean',
+            'days_of_week' => 'sometimes|array',
+            'days_of_week.*' => 'integer|min:0|max:6',
+            'schedule_type' => 'sometimes|in:fixed,on_demand',
+        ]);
+
+        $validated['updated_by'] = auth()->id();
+
+        $schedule->update($validated);
+
+        Log::info("Schedule updated: #{$schedule->id} on route #{$route->id}");
+
+        return response()->json([
+            'message' => 'Schedule updated successfully',
+            'data' => $schedule->fresh(),
+        ]);
     }
 
     /**

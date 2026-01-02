@@ -34,7 +34,9 @@ export interface RouteSchedule {
   id: number
   route_id: number
   scheduled_time: string
+  name?: string | null
   is_active: boolean
+  days_of_week?: number[]
   created_at: string
   updated_at: string
 }

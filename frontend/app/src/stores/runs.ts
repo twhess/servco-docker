@@ -78,21 +78,22 @@ export const useRunsStore = defineStore('runs', {
       this.error = null
       try {
         const response = await api.get(`/runs/${id}`)
-        this.activeRun = response.data.data
+        const run: RunInstance = response.data.data
+        this.activeRun = run
 
         // Update in runs list if exists
         const index = this.runs.findIndex(r => r.id === id)
         if (index !== -1) {
-          this.runs[index] = this.activeRun
+          this.runs[index] = run
         }
 
         // Update in myRuns list if exists
         const myIndex = this.myRuns.findIndex(r => r.id === id)
         if (myIndex !== -1) {
-          this.myRuns[myIndex] = this.activeRun
+          this.myRuns[myIndex] = run
         }
 
-        return this.activeRun
+        return run
       } catch (error: any) {
         this.error = error.response?.data?.message || 'Failed to fetch run'
         throw error
@@ -273,6 +274,58 @@ export const useRunsStore = defineStore('runs', {
         return notes
       } catch (error: any) {
         this.error = error.response?.data?.message || 'Failed to fetch notes'
+        throw error
+      } finally {
+        this.loading = false
+      }
+    },
+
+    async createOnDemandRun(data: { route_id: number; date: string; time: string; assigned_runner_user_id?: number }) {
+      this.loading = true
+      this.error = null
+      try {
+        const response = await api.post('/runs/create-on-demand', data)
+        const newRun = response.data.data
+
+        // Add to runs list
+        this.runs.push(newRun)
+
+        return newRun
+      } catch (error: any) {
+        this.error = error.response?.data?.message || 'Failed to create on-demand run'
+        throw error
+      } finally {
+        this.loading = false
+      }
+    },
+
+    async mergeRuns(targetRunId: number, sourceRunId: number, keepRunner: 'target' | 'source' = 'target') {
+      this.loading = true
+      this.error = null
+      try {
+        const response = await api.post(`/runs/${targetRunId}/merge/${sourceRunId}`, {
+          keep_runner: keepRunner,
+        })
+
+        const updatedRun = response.data.data
+        const canceledRunId = response.data.canceled_run_id
+
+        // Update target run in lists
+        this.updateRunInLists(updatedRun)
+
+        // Update canceled run status in lists
+        const canceledRun = this.runs.find((r) => r.id === canceledRunId)
+        if (canceledRun) {
+          canceledRun.status = 'canceled'
+        }
+
+        return {
+          mergedRun: updatedRun,
+          canceledRunId,
+          message: response.data.message,
+        }
+      } catch (error: any) {
+        this.error = error.response?.data?.message || 'Failed to merge runs'
         throw error
       } finally {
         this.loading = false

@@ -78,15 +78,16 @@ export const useRoutesStore = defineStore('routes', {
       this.error = null
       try {
         const response = await api.get(`/routes/${id}`)
-        this.activeRoute = response.data.data
+        const route: Route = response.data.data
+        this.activeRoute = route
 
         // Update in routes list if exists
         const index = this.routes.findIndex(r => r.id === id)
         if (index !== -1) {
-          this.routes[index] = this.activeRoute
+          this.routes[index] = route
         }
 
-        return this.activeRoute
+        return route
       } catch (error: any) {
         this.error = error.response?.data?.message || 'Failed to fetch route'
         throw error
@@ -143,9 +144,9 @@ export const useRoutesStore = defineStore('routes', {
         await api.delete(`/routes/${id}`)
 
         // Mark as inactive in local state
-        const index = this.routes.findIndex(r => r.id === id)
-        if (index !== -1) {
-          this.routes[index].is_active = false
+        const routeToDelete = this.routes.find(r => r.id === id)
+        if (routeToDelete) {
+          routeToDelete.is_active = false
         }
 
         if (this.activeRoute?.id === id) {
@@ -262,13 +263,15 @@ export const useRoutesStore = defineStore('routes', {
       }
     },
 
-    async addSchedule(routeId: number, time: string) {
+    async addSchedule(routeId: number, time: string, name?: string, daysOfWeek?: number[]) {
       this.loading = true
       this.error = null
       try {
         const response = await api.post(`/routes/${routeId}/schedules`, {
           scheduled_time: time,
+          name: name || null,
           is_active: true,
+          days_of_week: daysOfWeek || [1, 2, 3, 4, 5],
         })
         const newSchedule = response.data.data
 
@@ -280,6 +283,27 @@ export const useRoutesStore = defineStore('routes', {
         return newSchedule
       } catch (error: any) {
         this.error = error.response?.data?.message || 'Failed to add schedule'
+        throw error
+      } finally {
+        this.loading = false
+      }
+    },
+
+    async updateSchedule(routeId: number, scheduleId: number, data: { scheduled_time?: string; name?: string; is_active?: boolean; days_of_week?: number[] }) {
+      this.loading = true
+      this.error = null
+      try {
+        const response = await api.put(`/routes/${routeId}/schedules/${scheduleId}`, data)
+        const updatedSchedule = response.data.data
+
+        // Refresh active route
+        if (this.activeRoute?.id === routeId) {
+          await this.fetchRoute(routeId)
+        }
+
+        return updatedSchedule
+      } catch (error: any) {
+        this.error = error.response?.data?.message || 'Failed to update schedule'
         throw error
       } finally {
         this.loading = false

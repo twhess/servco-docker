@@ -3,7 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Models\PartsRequest;
+use App\Models\PartsRequestDocument;
 use App\Models\PartsRequestEvent;
+use App\Models\PartsRequestImage;
+use App\Models\PartsRequestItem;
 use App\Models\PartsRequestPhoto;
 use App\Models\PartsRequestLocation;
 use App\Models\PartsRequestStatus;
@@ -54,6 +57,12 @@ class PartsRequestController extends Controller
             'receivingLocation',
             'requestedBy',
             'assignedRunner',
+            'runInstance.route',
+            'runInstance.schedule',
+            'vendor',
+            'customer',
+            'customerAddress',
+            'items',
         ])->orderBy('requested_at', 'desc');
 
         // All users can view all parts requests (no filtering by user)
@@ -105,6 +114,10 @@ class PartsRequestController extends Controller
             'originLocation',
             'receivingLocation',
             'photos',
+            'vendor',
+            'customer',
+            'customerAddress',
+            'items',
         ])
         ->where('assigned_runner_user_id', $request->user()->id)
         ->active()
@@ -131,6 +144,11 @@ class PartsRequestController extends Controller
             'requestedBy',
             'assignedRunner',
             'lastModifiedBy',
+            'vendor',
+            'vendorAddress',
+            'customer',
+            'customerAddress',
+            'items.verifiedBy',
         ])->findOrFail($id);
 
         // All authenticated users can view parts requests
@@ -148,9 +166,13 @@ class PartsRequestController extends Controller
         $validated = $request->validate([
             'request_type_id' => 'required|exists:parts_request_types,id',
             'vendor_name' => 'nullable|string|max:255',
+            'vendor_id' => 'nullable|exists:vendors,id',
+            'vendor_address_id' => 'nullable|exists:addresses,id',
             'customer_name' => 'nullable|string|max:255',
             'customer_phone' => 'nullable|string|max:20',
             'customer_address' => 'nullable|string',
+            'customer_id' => 'nullable|exists:customers,id',
+            'customer_address_id' => 'nullable|exists:addresses,id',
             'customer_lat' => 'nullable|numeric',
             'customer_lng' => 'nullable|numeric',
             'origin_location_id' => 'nullable|exists:service_locations,id',
@@ -167,6 +189,12 @@ class PartsRequestController extends Controller
             'slack_notify_pickup' => 'boolean',
             'slack_notify_delivery' => 'boolean',
             'slack_channel' => 'nullable|string|max:50',
+            // Line items
+            'items' => 'nullable|array',
+            'items.*.description' => 'required|string|max:500',
+            'items.*.quantity' => 'required|integer|min:1',
+            'items.*.part_number' => 'nullable|string|max:100',
+            'items.*.notes' => 'nullable|string',
         ]);
 
         DB::beginTransaction();
@@ -179,7 +207,27 @@ class PartsRequestController extends Controller
             $validated['requested_at'] = now();
             $validated['requested_by_user_id'] = $request->user()->id;
 
+            // Extract items before creating request
+            $items = $validated['items'] ?? [];
+            unset($validated['items']);
+
             $partsRequest = PartsRequest::create($validated);
+
+            // Create line items if provided
+            if (!empty($items)) {
+                foreach ($items as $index => $itemData) {
+                    PartsRequestItem::create([
+                        'parts_request_id' => $partsRequest->id,
+                        'description' => $itemData['description'],
+                        'quantity' => $itemData['quantity'],
+                        'part_number' => $itemData['part_number'] ?? null,
+                        'notes' => $itemData['notes'] ?? null,
+                        'sort_order' => $index,
+                        'created_by' => $request->user()->id,
+                        'updated_by' => $request->user()->id,
+                    ]);
+                }
+            }
 
             // Create "created" event
             PartsRequestEvent::create([
@@ -194,7 +242,10 @@ class PartsRequestController extends Controller
             return response()->json([
                 'parts_request' => $partsRequest->load([
                     'requestType', 'status', 'urgency',
-                    'originLocation', 'receivingLocation', 'requestedBy'
+                    'originLocation', 'receivingLocation', 'requestedBy',
+                    'vendor', 'vendorAddress',
+                    'customer', 'customerAddress',
+                    'items'
                 ]),
                 'message' => 'Parts request created successfully',
             ], 201);
@@ -215,9 +266,13 @@ class PartsRequestController extends Controller
 
         $validated = $request->validate([
             'vendor_name' => 'nullable|string|max:255',
+            'vendor_id' => 'nullable|exists:vendors,id',
+            'vendor_address_id' => 'nullable|exists:addresses,id',
             'customer_name' => 'nullable|string|max:255',
             'customer_phone' => 'nullable|string|max:20',
             'customer_address' => 'nullable|string',
+            'customer_id' => 'nullable|exists:customers,id',
+            'customer_address_id' => 'nullable|exists:addresses,id',
             'origin_location_id' => 'nullable|exists:service_locations,id',
             'origin_area_id' => 'nullable|exists:location_areas,id',
             'receiving_location_id' => 'nullable|exists:service_locations,id',
@@ -237,7 +292,7 @@ class PartsRequestController extends Controller
         $partsRequest->update($validated);
 
         return response()->json([
-            'parts_request' => $partsRequest->load(['requestType', 'status', 'urgency']),
+            'parts_request' => $partsRequest->load(['requestType', 'status', 'urgency', 'vendor', 'vendorAddress', 'customer', 'customerAddress']),
             'message' => 'Parts request updated successfully',
         ]);
     }
@@ -754,6 +809,7 @@ class PartsRequestController extends Controller
             'originLocation',
             'receivingLocation',
             'requestedBy',
+            'vendor',
         ])
         ->whereHas('requestType', function ($q) {
             $q->where('name', 'transfer');
@@ -791,6 +847,9 @@ class PartsRequestController extends Controller
             'runInstance.route',
             'pickupStop',
             'dropoffStop',
+            'vendor',
+            'customer',
+            'customerAddress',
         ])->parentsOnly(); // Don't show segments in main feed
 
         // Advanced filters
@@ -891,6 +950,7 @@ class PartsRequestController extends Controller
             'originLocation',
             'receivingLocation',
             'requestedBy',
+            'vendor',
         ])->futureScheduled();
 
         // Group by scheduled date
@@ -952,5 +1012,547 @@ class PartsRequestController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    // ==========================================
+    // LINE ITEMS MANAGEMENT ENDPOINTS
+    // ==========================================
+
+    /**
+     * GET /parts-requests/{id}/items - Get all items for a request
+     */
+    public function items(int $id)
+    {
+        $partsRequest = PartsRequest::findOrFail($id);
+
+        $items = $partsRequest->items()
+            ->with('verifiedBy')
+            ->orderBy('sort_order')
+            ->get();
+
+        return response()->json([
+            'data' => $items,
+        ]);
+    }
+
+    /**
+     * POST /parts-requests/{id}/items - Add item to request
+     */
+    public function addItem(Request $request, int $id)
+    {
+        $partsRequest = PartsRequest::findOrFail($id);
+
+        // Check if user can modify this request
+        if (!$partsRequest->canBeModifiedBy($request->user())) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $validated = $request->validate([
+            'description' => 'required|string|max:500',
+            'quantity' => 'required|integer|min:1',
+            'part_number' => 'nullable|string|max:100',
+            'notes' => 'nullable|string',
+        ]);
+
+        // Get next sort order
+        $maxOrder = $partsRequest->items()->max('sort_order') ?? -1;
+
+        $item = PartsRequestItem::create([
+            'parts_request_id' => $partsRequest->id,
+            'description' => $validated['description'],
+            'quantity' => $validated['quantity'],
+            'part_number' => $validated['part_number'] ?? null,
+            'notes' => $validated['notes'] ?? null,
+            'sort_order' => $maxOrder + 1,
+            'created_by' => $request->user()->id,
+            'updated_by' => $request->user()->id,
+        ]);
+
+        return response()->json([
+            'message' => 'Item added successfully',
+            'data' => $item,
+        ], 201);
+    }
+
+    /**
+     * PUT /parts-requests/{id}/items/{itemId} - Update item
+     */
+    public function updateItem(Request $request, int $id, int $itemId)
+    {
+        $partsRequest = PartsRequest::findOrFail($id);
+        $item = PartsRequestItem::where('parts_request_id', $id)->findOrFail($itemId);
+
+        // Check if user can modify this request
+        if (!$partsRequest->canBeModifiedBy($request->user())) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $validated = $request->validate([
+            'description' => 'sometimes|required|string|max:500',
+            'quantity' => 'sometimes|required|integer|min:1',
+            'part_number' => 'nullable|string|max:100',
+            'notes' => 'nullable|string',
+            'sort_order' => 'sometimes|integer|min:0',
+        ]);
+
+        $item->update($validated);
+
+        return response()->json([
+            'message' => 'Item updated successfully',
+            'data' => $item->fresh(),
+        ]);
+    }
+
+    /**
+     * DELETE /parts-requests/{id}/items/{itemId} - Remove item
+     */
+    public function removeItem(Request $request, int $id, int $itemId)
+    {
+        $partsRequest = PartsRequest::findOrFail($id);
+        $item = PartsRequestItem::where('parts_request_id', $id)->findOrFail($itemId);
+
+        // Check if user can modify this request
+        if (!$partsRequest->canBeModifiedBy($request->user())) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $item->delete();
+
+        return response()->json([
+            'message' => 'Item removed successfully',
+        ]);
+    }
+
+    /**
+     * POST /parts-requests/{id}/items/{itemId}/verify - Runner verifies item at pickup
+     */
+    public function verifyItem(Request $request, int $id, int $itemId)
+    {
+        $partsRequest = PartsRequest::findOrFail($id);
+        $item = PartsRequestItem::where('parts_request_id', $id)->findOrFail($itemId);
+
+        // Only assigned runner can verify items
+        if (!$partsRequest->isAssignedTo($request->user())) {
+            return response()->json(['message' => 'Only assigned runner can verify items'], 403);
+        }
+
+        $item->verify($request->user());
+
+        return response()->json([
+            'message' => 'Item verified successfully',
+            'data' => $item->fresh(['verifiedBy']),
+        ]);
+    }
+
+    /**
+     * POST /parts-requests/{id}/items/{itemId}/unverify - Unverify item
+     */
+    public function unverifyItem(Request $request, int $id, int $itemId)
+    {
+        $partsRequest = PartsRequest::findOrFail($id);
+        $item = PartsRequestItem::where('parts_request_id', $id)->findOrFail($itemId);
+
+        // Only assigned runner can unverify items
+        if (!$partsRequest->isAssignedTo($request->user())) {
+            return response()->json(['message' => 'Only assigned runner can unverify items'], 403);
+        }
+
+        $item->unverify();
+
+        return response()->json([
+            'message' => 'Item unverified successfully',
+            'data' => $item->fresh(),
+        ]);
+    }
+
+    /**
+     * PUT /parts-requests/{id}/items/reorder - Reorder items
+     */
+    public function reorderItems(Request $request, int $id)
+    {
+        $partsRequest = PartsRequest::findOrFail($id);
+
+        // Check if user can modify this request
+        if (!$partsRequest->canBeModifiedBy($request->user())) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $validated = $request->validate([
+            'item_ids' => 'required|array',
+            'item_ids.*' => 'required|integer|exists:parts_request_items,id',
+        ]);
+
+        DB::beginTransaction();
+        try {
+            foreach ($validated['item_ids'] as $index => $itemId) {
+                PartsRequestItem::where('id', $itemId)
+                    ->where('parts_request_id', $id)
+                    ->update(['sort_order' => $index]);
+            }
+            DB::commit();
+
+            return response()->json([
+                'message' => 'Items reordered successfully',
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json(['message' => 'Failed to reorder items'], 500);
+        }
+    }
+
+    // ==========================================
+    // DOCUMENT MANAGEMENT ENDPOINTS
+    // ==========================================
+
+    /**
+     * GET /parts-requests/{id}/documents - Get all documents for a request
+     */
+    public function documents(int $id)
+    {
+        $partsRequest = PartsRequest::findOrFail($id);
+
+        $documents = $partsRequest->documents()
+            ->with('uploadedBy')
+            ->get();
+
+        return response()->json([
+            'data' => $documents,
+        ]);
+    }
+
+    /**
+     * POST /parts-requests/{id}/documents - Upload document to request
+     */
+    public function uploadDocument(Request $request, int $id)
+    {
+        $partsRequest = PartsRequest::findOrFail($id);
+
+        // Check if user can modify this request
+        if (!$partsRequest->canBeModifiedBy($request->user())) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $validated = $request->validate([
+            'file' => 'required|file|max:20480', // 20MB max
+            'description' => 'nullable|string|max:255',
+        ]);
+
+        try {
+            $file = $request->file('file');
+            $originalName = $file->getClientOriginalName();
+            $storedName = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
+            $path = $file->storeAs('parts-requests/' . $partsRequest->id . '/documents', $storedName, 'public');
+
+            $document = PartsRequestDocument::create([
+                'parts_request_id' => $partsRequest->id,
+                'original_filename' => $originalName,
+                'stored_filename' => $storedName,
+                'file_path' => $path,
+                'mime_type' => $file->getMimeType(),
+                'file_size' => $file->getSize(),
+                'description' => $validated['description'] ?? null,
+                'uploaded_by_user_id' => $request->user()->id,
+                'uploaded_at' => now(),
+                'created_by' => $request->user()->id,
+                'updated_by' => $request->user()->id,
+            ]);
+
+            return response()->json([
+                'message' => 'Document uploaded successfully',
+                'data' => $document->load('uploadedBy'),
+            ], 201);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Failed to upload document',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * GET /parts-requests/{id}/documents/{documentId} - Get single document details
+     */
+    public function showDocument(int $id, int $documentId)
+    {
+        $partsRequest = PartsRequest::findOrFail($id);
+        $document = PartsRequestDocument::where('parts_request_id', $id)->findOrFail($documentId);
+
+        return response()->json([
+            'data' => $document->load('uploadedBy'),
+        ]);
+    }
+
+    /**
+     * PUT /parts-requests/{id}/documents/{documentId} - Update document description
+     */
+    public function updateDocument(Request $request, int $id, int $documentId)
+    {
+        $partsRequest = PartsRequest::findOrFail($id);
+        $document = PartsRequestDocument::where('parts_request_id', $id)->findOrFail($documentId);
+
+        // Check if user can modify this request
+        if (!$partsRequest->canBeModifiedBy($request->user())) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $validated = $request->validate([
+            'description' => 'nullable|string|max:255',
+        ]);
+
+        $document->update($validated);
+
+        return response()->json([
+            'message' => 'Document updated successfully',
+            'data' => $document->fresh(),
+        ]);
+    }
+
+    /**
+     * DELETE /parts-requests/{id}/documents/{documentId} - Delete document
+     */
+    public function deleteDocument(Request $request, int $id, int $documentId)
+    {
+        $partsRequest = PartsRequest::findOrFail($id);
+        $document = PartsRequestDocument::where('parts_request_id', $id)->findOrFail($documentId);
+
+        // Check if user can modify this request
+        if (!$partsRequest->canBeModifiedBy($request->user())) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        // Model boot method handles file deletion from storage
+        $document->delete();
+
+        return response()->json([
+            'message' => 'Document deleted successfully',
+        ]);
+    }
+
+    /**
+     * GET /parts-requests/{id}/documents/{documentId}/download - Download or view document
+     * Use ?inline=1 to view inline (for images/PDFs), otherwise forces download
+     */
+    public function downloadDocument(Request $request, int $id, int $documentId)
+    {
+        $partsRequest = PartsRequest::findOrFail($id);
+        $document = PartsRequestDocument::where('parts_request_id', $id)->findOrFail($documentId);
+
+        if (!Storage::disk('public')->exists($document->file_path)) {
+            return response()->json(['message' => 'File not found'], 404);
+        }
+
+        // If inline param is set and file is previewable, serve inline
+        if ($request->query('inline') && $document->isPreviewable()) {
+            return response()->file(
+                Storage::disk('public')->path($document->file_path),
+                ['Content-Type' => $document->mime_type]
+            );
+        }
+
+        return Storage::disk('public')->download(
+            $document->file_path,
+            $document->original_filename,
+            ['Content-Type' => $document->mime_type]
+        );
+    }
+
+    // ==========================================
+    // IMAGE MANAGEMENT ENDPOINTS
+    // ==========================================
+
+    /**
+     * GET /parts-requests/{id}/images - Get all images for a request
+     * Optional ?source=requester|pickup|delivery to filter
+     */
+    public function images(Request $request, int $id)
+    {
+        $partsRequest = PartsRequest::findOrFail($id);
+
+        $query = $partsRequest->images()->with('uploadedBy');
+
+        if ($request->has('source')) {
+            $query->where('source', $request->source);
+        }
+
+        $images = $query->get();
+
+        return response()->json([
+            'data' => $images,
+        ]);
+    }
+
+    /**
+     * POST /parts-requests/{id}/images - Upload image to request
+     * source: 'requester' (default), 'pickup', 'delivery'
+     */
+    public function uploadImage(Request $request, int $id)
+    {
+        $partsRequest = PartsRequest::findOrFail($id);
+
+        $validated = $request->validate([
+            'image' => 'required|image|max:20480', // 20MB max
+            'source' => 'nullable|in:requester,pickup,delivery',
+            'caption' => 'nullable|string|max:255',
+            'latitude' => 'nullable|numeric|between:-90,90',
+            'longitude' => 'nullable|numeric|between:-180,180',
+        ]);
+
+        $source = $validated['source'] ?? 'requester';
+
+        // Authorization check based on source
+        if ($source === 'requester') {
+            // Requester images can be added by anyone who can modify the request
+            if (!$partsRequest->canBeModifiedBy($request->user())) {
+                return response()->json(['message' => 'Unauthorized'], 403);
+            }
+        } else {
+            // Pickup/delivery images can only be added by assigned runner
+            if (!$partsRequest->isAssignedTo($request->user())) {
+                return response()->json(['message' => 'Only assigned runner can add pickup/delivery images'], 403);
+            }
+        }
+
+        try {
+            $imageService = app(\App\Services\ImageProcessingService::class);
+            $file = $request->file('image');
+
+            // Process and compress the image
+            $directory = 'parts-requests/' . $partsRequest->id . '/images';
+            $imageData = $imageService->processAndStore($file, $directory, true);
+
+            // Extract EXIF metadata (GPS, date taken)
+            $metadata = $imageService->extractMetadata($file);
+
+            // Create the image record
+            $image = PartsRequestImage::create([
+                'parts_request_id' => $partsRequest->id,
+                'source' => $source,
+                'original_filename' => $imageData['original_filename'],
+                'stored_filename' => $imageData['stored_filename'],
+                'file_path' => $imageData['file_path'],
+                'thumbnail_path' => $imageData['thumbnail_path'],
+                'mime_type' => $imageData['mime_type'],
+                'file_size' => $imageData['file_size'],
+                'original_size' => $imageData['original_size'],
+                'width' => $imageData['width'],
+                'height' => $imageData['height'],
+                'caption' => $validated['caption'] ?? null,
+                'latitude' => $validated['latitude'] ?? $metadata['latitude'],
+                'longitude' => $validated['longitude'] ?? $metadata['longitude'],
+                'taken_at' => $metadata['taken_at'],
+                'uploaded_by_user_id' => $request->user()->id,
+                'uploaded_at' => now(),
+                'created_by' => $request->user()->id,
+                'updated_by' => $request->user()->id,
+            ]);
+
+            return response()->json([
+                'message' => 'Image uploaded successfully',
+                'data' => $image->load('uploadedBy'),
+            ], 201);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Failed to upload image',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * GET /parts-requests/{id}/images/{imageId} - Serve image file
+     */
+    public function showImage(int $id, int $imageId)
+    {
+        $partsRequest = PartsRequest::findOrFail($id);
+        $image = PartsRequestImage::where('parts_request_id', $id)->findOrFail($imageId);
+
+        if (!Storage::disk('public')->exists($image->file_path)) {
+            return response()->json(['message' => 'Image not found'], 404);
+        }
+
+        return response()->file(
+            Storage::disk('public')->path($image->file_path),
+            ['Content-Type' => $image->mime_type]
+        );
+    }
+
+    /**
+     * GET /parts-requests/{id}/images/{imageId}/thumbnail - Serve thumbnail
+     */
+    public function showImageThumbnail(int $id, int $imageId)
+    {
+        $partsRequest = PartsRequest::findOrFail($id);
+        $image = PartsRequestImage::where('parts_request_id', $id)->findOrFail($imageId);
+
+        $path = $image->thumbnail_path ?? $image->file_path;
+
+        if (!Storage::disk('public')->exists($path)) {
+            return response()->json(['message' => 'Image not found'], 404);
+        }
+
+        return response()->file(
+            Storage::disk('public')->path($path),
+            ['Content-Type' => $image->mime_type]
+        );
+    }
+
+    /**
+     * PUT /parts-requests/{id}/images/{imageId} - Update image caption
+     */
+    public function updateImage(Request $request, int $id, int $imageId)
+    {
+        $partsRequest = PartsRequest::findOrFail($id);
+        $image = PartsRequestImage::where('parts_request_id', $id)->findOrFail($imageId);
+
+        // Check authorization based on image source
+        if ($image->isRequesterImage()) {
+            if (!$partsRequest->canBeModifiedBy($request->user())) {
+                return response()->json(['message' => 'Unauthorized'], 403);
+            }
+        } else {
+            if (!$partsRequest->isAssignedTo($request->user())) {
+                return response()->json(['message' => 'Only assigned runner can update pickup/delivery images'], 403);
+            }
+        }
+
+        $validated = $request->validate([
+            'caption' => 'nullable|string|max:255',
+        ]);
+
+        $image->update($validated);
+
+        return response()->json([
+            'message' => 'Image updated successfully',
+            'data' => $image->fresh(),
+        ]);
+    }
+
+    /**
+     * DELETE /parts-requests/{id}/images/{imageId} - Delete image
+     */
+    public function deleteImage(Request $request, int $id, int $imageId)
+    {
+        $partsRequest = PartsRequest::findOrFail($id);
+        $image = PartsRequestImage::where('parts_request_id', $id)->findOrFail($imageId);
+
+        // Check authorization based on image source
+        if ($image->isRequesterImage()) {
+            if (!$partsRequest->canBeModifiedBy($request->user())) {
+                return response()->json(['message' => 'Unauthorized'], 403);
+            }
+        } else {
+            if (!$partsRequest->isAssignedTo($request->user())) {
+                return response()->json(['message' => 'Only assigned runner can delete pickup/delivery images'], 403);
+            }
+        }
+
+        // Model boot method handles file deletion from storage
+        $image->delete();
+
+        return response()->json([
+            'message' => 'Image deleted successfully',
+        ]);
     }
 }
