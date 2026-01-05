@@ -7,11 +7,19 @@ export interface ServiceLocation {
   longitude?: number
 }
 
+export interface Vendor {
+  id: number
+  name: string
+  phone?: string | null
+  email?: string | null
+  status: 'active' | 'inactive'
+}
+
 export interface VendorClusterLocation {
   id: number
   route_stop_id: number
-  vendor_location_id: number
-  vendor_location?: ServiceLocation
+  vendor_id: number
+  vendor?: Vendor
   location_order: number
   is_optional: boolean
 }

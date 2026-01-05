@@ -112,6 +112,20 @@ export interface PartsRequestDocument {
   updated_at: string;
 }
 
+export interface PartsRequestNote {
+  id: number;
+  parts_request_id: number;
+  content: string;
+  user_id: number;
+  user?: { id: number; name: string } | null;
+  is_edited: boolean;
+  edited_at: string | null;
+  can_edit: boolean;
+  can_delete: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export type ImageSource = 'requester' | 'pickup' | 'delivery';
 
 export interface PartsRequestImage {
@@ -868,6 +882,73 @@ export const usePartsRequestsStore = defineStore('partsRequests', {
 
     getImageThumbnailUrl(requestId: number, imageId: number): string {
       return `${api.defaults.baseURL}/parts-requests/${requestId}/images/${imageId}/thumbnail`;
+    },
+
+    // ==========================================
+    // NOTES ACTIONS
+    // ==========================================
+
+    async fetchNotes(requestId: number): Promise<PartsRequestNote[]> {
+      try {
+        const response = await api.get(`/parts-requests/${requestId}/notes`);
+        return response.data.data;
+      } catch (error: any) {
+        Notify.create({
+          type: 'negative',
+          message: error.response?.data?.message || 'Failed to load notes',
+        });
+        throw error;
+      }
+    },
+
+    async createNote(requestId: number, content: string): Promise<PartsRequestNote> {
+      try {
+        const response = await api.post(`/parts-requests/${requestId}/notes`, { content });
+        Notify.create({
+          type: 'positive',
+          message: response.data.message || 'Note added successfully',
+        });
+        return response.data.data as PartsRequestNote;
+      } catch (error: any) {
+        Notify.create({
+          type: 'negative',
+          message: error.response?.data?.message || 'Failed to add note',
+        });
+        throw error;
+      }
+    },
+
+    async updateNote(requestId: number, noteId: number, content: string): Promise<PartsRequestNote> {
+      try {
+        const response = await api.put(`/parts-requests/${requestId}/notes/${noteId}`, { content });
+        Notify.create({
+          type: 'positive',
+          message: response.data.message || 'Note updated successfully',
+        });
+        return response.data.data as PartsRequestNote;
+      } catch (error: any) {
+        Notify.create({
+          type: 'negative',
+          message: error.response?.data?.message || 'Failed to update note',
+        });
+        throw error;
+      }
+    },
+
+    async deleteNote(requestId: number, noteId: number): Promise<void> {
+      try {
+        const response = await api.delete(`/parts-requests/${requestId}/notes/${noteId}`);
+        Notify.create({
+          type: 'positive',
+          message: response.data.message || 'Note deleted successfully',
+        });
+      } catch (error: any) {
+        Notify.create({
+          type: 'negative',
+          message: error.response?.data?.message || 'Failed to delete note',
+        });
+        throw error;
+      }
     },
   },
 });

@@ -87,15 +87,24 @@ class Route extends Model
     }
 
     /**
-     * Routes that serve a specific location
+     * Routes that serve a specific location (shops, customer sites)
      */
     public function scopeHasLocation($query, int $locationId)
     {
         return $query->whereHas('stops', function ($q) use ($locationId) {
-            $q->where('location_id', $locationId)
-              ->orWhereHas('vendorClusterLocations', function ($vq) use ($locationId) {
-                  $vq->where('vendor_location_id', $locationId);
-              });
+            $q->where('location_id', $locationId);
+        });
+    }
+
+    /**
+     * Routes that serve a specific vendor
+     */
+    public function scopeHasVendor($query, int $vendorId)
+    {
+        return $query->whereHas('stops', function ($q) use ($vendorId) {
+            $q->whereHas('vendorClusterLocations', function ($vq) use ($vendorId) {
+                $vq->where('vendor_id', $vendorId);
+            });
         });
     }
 
@@ -125,31 +134,70 @@ class Route extends Model
     public function includesLocation(int $locationId): bool
     {
         return $this->stops()
-            ->where(function ($q) use ($locationId) {
-                $q->where('location_id', $locationId)
-                  ->orWhereHas('vendorClusterLocations', function ($vq) use ($locationId) {
-                      $vq->where('vendor_location_id', $locationId);
-                  });
+            ->where('location_id', $locationId)
+            ->exists();
+    }
+
+    /**
+     * Check if route includes a specific vendor
+     */
+    public function includesVendor(int $vendorId): bool
+    {
+        return $this->stops()
+            ->whereHas('vendorClusterLocations', function ($vq) use ($vendorId) {
+                $vq->where('vendor_id', $vendorId);
             })
             ->exists();
     }
 
     /**
      * Get next scheduled time after a given time
+     * Returns the time in H:i format, or null if no schedule available
      */
     public function getNextScheduledTime(\Carbon\Carbon $after, ?\Carbon\Carbon $forDate = null): ?string
     {
-        $query = $this->schedules()->where('is_active', true);
+        $schedules = $this->schedules()->where('is_active', true)->get();
 
-        if ($forDate) {
-            // For specific date, return any active schedule
-            return $query->orderBy('scheduled_time')->first()?->scheduled_time;
+        if ($schedules->isEmpty()) {
+            return null;
         }
 
-        // For today, return next schedule after current time
-        return $query->where('scheduled_time', '>', $after->format('H:i:s'))
-                     ->orderBy('scheduled_time')
-                     ->first()?->scheduled_time;
+        $targetDate = $forDate ?? $after->copy()->startOfDay();
+        $currentTime = $after->format('H:i');
+
+        // If we have a specific date, check if schedules run on that day
+        // Otherwise use today first, then check next available day
+        $maxDaysToCheck = 7;
+
+        for ($dayOffset = 0; $dayOffset < $maxDaysToCheck; $dayOffset++) {
+            $checkDate = $targetDate->copy()->addDays($dayOffset);
+
+            foreach ($schedules->sortBy(fn($s) => $s->scheduled_time?->format('H:i') ?? '00:00') as $schedule) {
+                // Check if schedule runs on this day
+                if (!$schedule->runsOnDate($checkDate)) {
+                    continue;
+                }
+
+                // Get the time from the schedule
+                $scheduleTime = $schedule->scheduled_time?->format('H:i');
+                if (!$scheduleTime) {
+                    continue;
+                }
+
+                // For today (dayOffset = 0), only consider times after current time
+                // For future days, any time works
+                if ($dayOffset === 0 && !$forDate) {
+                    if ($scheduleTime <= $currentTime) {
+                        continue;
+                    }
+                }
+
+                // Found a valid schedule
+                return $scheduleTime;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -161,8 +209,8 @@ class Route extends Model
             'scheduled_date' => $date->toDateString(),
             'scheduled_time' => $time,
             'status' => 'pending',
-            'created_by' => auth()->id(),
-            'updated_by' => auth()->id(),
+            'created_by' => auth()->id() ?? 1,
+            'updated_by' => auth()->id() ?? 1,
         ]);
     }
 }

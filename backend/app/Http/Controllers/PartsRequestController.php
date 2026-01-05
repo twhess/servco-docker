@@ -7,9 +7,11 @@ use App\Models\PartsRequestDocument;
 use App\Models\PartsRequestEvent;
 use App\Models\PartsRequestImage;
 use App\Models\PartsRequestItem;
+use App\Models\PartsRequestNote;
 use App\Models\PartsRequestPhoto;
 use App\Models\PartsRequestLocation;
 use App\Models\PartsRequestStatus;
+use App\Models\PartsRequestType;
 use App\Services\GeofenceService;
 use App\Services\SlackNotificationService;
 use App\Services\RequestWorkflowService;
@@ -239,16 +241,54 @@ class PartsRequestController extends Controller
 
             DB::commit();
 
-            return response()->json([
+            // Auto-assign to next available run (for pickup, return, transfer - not delivery)
+            $autoAssigned = false;
+            $autoAssignMessage = null;
+            if ($this->shouldAutoAssign($partsRequest)) {
+                try {
+                    $autoAssigned = $this->schedulerService->autoAssignRequest($partsRequest);
+                    if ($autoAssigned) {
+                        $partsRequest->refresh();
+
+                        // For transfers, set status to "confirmed"
+                        $requestType = PartsRequestType::find($partsRequest->request_type_id);
+                        if ($requestType && $requestType->name === 'transfer') {
+                            $confirmedStatus = PartsRequestStatus::where('name', 'confirmed')->first();
+                            if ($confirmedStatus) {
+                                $partsRequest->update(['status_id' => $confirmedStatus->id]);
+                                $partsRequest->refresh();
+                            }
+                        }
+
+                        $autoAssignMessage = 'Auto-assigned to run #' . $partsRequest->run_instance_id;
+                    } else {
+                        $autoAssignMessage = 'Auto-assignment failed - no route found. Manual assignment required.';
+                    }
+                } catch (\Exception $e) {
+                    \Illuminate\Support\Facades\Log::warning("Auto-assignment failed for request #{$partsRequest->id}: " . $e->getMessage());
+                    $autoAssignMessage = 'Auto-assignment failed: ' . $e->getMessage();
+                }
+            }
+
+            $responseData = [
                 'parts_request' => $partsRequest->load([
                     'requestType', 'status', 'urgency',
                     'originLocation', 'receivingLocation', 'requestedBy',
                     'vendor', 'vendorAddress',
                     'customer', 'customerAddress',
-                    'items'
+                    'items', 'runInstance', 'pickupStop', 'dropoffStop'
                 ]),
                 'message' => 'Parts request created successfully',
-            ], 201);
+            ];
+
+            if ($autoAssignMessage) {
+                $responseData['auto_assign_result'] = [
+                    'success' => $autoAssigned,
+                    'message' => $autoAssignMessage,
+                ];
+            }
+
+            return response()->json($responseData, 201);
 
         } catch (\Exception $e) {
             DB::rollBack();
@@ -1554,5 +1594,204 @@ class PartsRequestController extends Controller
         return response()->json([
             'message' => 'Image deleted successfully',
         ]);
+    }
+
+    // ==================== NOTES METHODS ====================
+
+    /**
+     * GET /parts-requests/{id}/notes - List notes for a request
+     */
+    public function notes(Request $request, int $id)
+    {
+        $partsRequest = PartsRequest::findOrFail($id);
+        $user = $request->user();
+        $isAdmin = $user->hasRole('admin') || $user->hasRole('super-admin');
+
+        $notes = $partsRequest->notes()->with('user:id,first_name,last_name,preferred_name,username')->get();
+
+        // Add permission flags to each note
+        $notes->each(function ($note) use ($user, $isAdmin) {
+            $isOwner = $note->user_id === $user->id;
+            $note->can_edit = $isOwner || $isAdmin;
+            $note->can_delete = $isOwner || $isAdmin;
+        });
+
+        return response()->json([
+            'data' => $notes,
+        ]);
+    }
+
+    /**
+     * POST /parts-requests/{id}/notes - Create a new note
+     */
+    public function storeNote(Request $request, int $id)
+    {
+        $partsRequest = PartsRequest::findOrFail($id);
+        $user = $request->user();
+
+        $validated = $request->validate([
+            'content' => 'required|string|max:5000',
+        ]);
+
+        $note = PartsRequestNote::create([
+            'parts_request_id' => $partsRequest->id,
+            'content' => $validated['content'],
+            'user_id' => $user->id,
+            'is_edited' => false,
+            'created_by' => $user->id,
+            'updated_by' => $user->id,
+        ]);
+
+        $note->load('user:id,first_name,last_name,preferred_name,username');
+        $note->can_edit = true;
+        $note->can_delete = true;
+
+        return response()->json([
+            'message' => 'Note added successfully',
+            'data' => $note,
+        ], 201);
+    }
+
+    /**
+     * PUT /parts-requests/{id}/notes/{noteId} - Update a note
+     */
+    public function updateNote(Request $request, int $id, int $noteId)
+    {
+        $partsRequest = PartsRequest::findOrFail($id);
+        $note = PartsRequestNote::where('parts_request_id', $id)->findOrFail($noteId);
+        $user = $request->user();
+        $isAdmin = $user->hasRole('admin') || $user->hasRole('super-admin');
+
+        // Check authorization - owner or admin
+        if ($note->user_id !== $user->id && !$isAdmin) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $validated = $request->validate([
+            'content' => 'required|string|max:5000',
+        ]);
+
+        $note->update([
+            'content' => $validated['content'],
+            'is_edited' => true,
+            'edited_at' => now(),
+            'updated_by' => $user->id,
+        ]);
+
+        $note->load('user:id,first_name,last_name,preferred_name,username');
+        $note->can_edit = true;
+        $note->can_delete = true;
+
+        return response()->json([
+            'message' => 'Note updated successfully',
+            'data' => $note,
+        ]);
+    }
+
+    /**
+     * DELETE /parts-requests/{id}/notes/{noteId} - Delete a note
+     */
+    public function deleteNote(Request $request, int $id, int $noteId)
+    {
+        $partsRequest = PartsRequest::findOrFail($id);
+        $note = PartsRequestNote::where('parts_request_id', $id)->findOrFail($noteId);
+        $user = $request->user();
+        $isAdmin = $user->hasRole('admin') || $user->hasRole('super-admin');
+
+        // Check authorization - owner or admin
+        if ($note->user_id !== $user->id && !$isAdmin) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $note->delete();
+
+        return response()->json([
+            'message' => 'Note deleted successfully',
+        ]);
+    }
+
+    // ==========================================
+    // AUTO-ASSIGNMENT HELPER METHODS
+    // ==========================================
+
+    /**
+     * Determine if a parts request should be auto-assigned to a run.
+     * Auto-assign: pickup, return, transfer (vendor-related and shop transfers)
+     * DO NOT auto-assign: delivery (customer deliveries handled by dispatch)
+     */
+    private function shouldAutoAssign(PartsRequest $request): bool
+    {
+        // Skip delivery requests (customer deliveries handled by dispatch)
+        $requestType = PartsRequestType::find($request->request_type_id);
+        $requestTypeName = $requestType?->name ?? '';
+
+        if ($requestTypeName === 'delivery') {
+            return false;
+        }
+
+        // For vendor pickups/returns: must have vendor_id and receiving_location_id
+        if ($request->vendor_id && $request->receiving_location_id) {
+            return true;
+        }
+
+        // For transfers: must have origin_location_id and receiving_location_id
+        if ($request->origin_location_id && $request->receiving_location_id) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * POST /parts-requests/{id}/not-ready - Runner marks pickup as not ready
+     * Moves the request to the next available run on the same route
+     */
+    public function markNotReady(Request $request, int $id)
+    {
+        $partsRequest = PartsRequest::findOrFail($id);
+
+        // Only assigned runner can mark as not ready
+        if (!$partsRequest->isAssignedTo($request->user())) {
+            return response()->json(['message' => 'Only assigned runner can mark pickup as not ready'], 403);
+        }
+
+        $validated = $request->validate([
+            'reason' => 'nullable|string|max:500',
+        ]);
+
+        DB::beginTransaction();
+        try {
+            // Use existing reassignToNextRun() method
+            $reassigned = $this->schedulerService->reassignToNextRun($partsRequest);
+
+            // Create event
+            $partsRequest->events()->create([
+                'event_type' => 'status_changed',
+                'notes' => 'Pickup not ready, moved to next run. ' . ($validated['reason'] ?? ''),
+                'event_at' => now(),
+                'user_id' => $request->user()->id,
+            ]);
+
+            DB::commit();
+
+            if (!$reassigned) {
+                return response()->json([
+                    'message' => 'Marked not ready but no next run available',
+                    'needs_manual_assignment' => true,
+                    'data' => $partsRequest->fresh(['status', 'runInstance']),
+                ]);
+            }
+
+            return response()->json([
+                'message' => 'Moved to next run',
+                'data' => $partsRequest->fresh(['status', 'runInstance', 'pickupStop', 'dropoffStop']),
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'message' => 'Failed to mark as not ready',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
     }
 }

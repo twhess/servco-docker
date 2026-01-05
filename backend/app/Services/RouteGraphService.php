@@ -65,17 +65,19 @@ class RouteGraphService
 
     /**
      * Get all location IDs for a stop (handles vendor clusters)
+     * Note: Vendor clusters no longer map to service_locations directly.
+     * They reference the vendors table. For routing purposes, vendor
+     * clusters are treated as a single stop without specific location IDs.
      */
     private function getStopLocations($stop): array
     {
         if ($stop->isVendorCluster()) {
-            // Get all vendor locations in this cluster
-            return $stop->vendorClusterLocations()
-                ->pluck('vendor_location_id')
-                ->toArray();
+            // Vendor clusters don't have direct location IDs anymore
+            // Return empty array - routing to vendors is handled separately
+            return [];
         }
 
-        return [$stop->location_id];
+        return $stop->location_id ? [$stop->location_id] : [];
     }
 
     /**
@@ -88,9 +90,14 @@ class RouteGraphService
         // Check cache first
         $cached = $this->getCachedPath($fromLocationId, $toLocationId);
         if ($cached && !$cached->isStale()) {
+            // Filter out null route_ids from cached data
+            $routes = array_values(array_filter(
+                array_column($cached->path_json, 'route_id'),
+                fn($r) => $r !== null
+            ));
             return [
                 'path' => $cached->path_json,
-                'routes' => array_column($cached->path_json, 'route_id'),
+                'routes' => $routes,
                 'hops' => $cached->hop_count,
             ];
         }
@@ -146,15 +153,17 @@ class RouteGraphService
 
         foreach ($path as $index => $locationId) {
             $location = ServiceLocation::find($locationId);
+            $routeId = $routeUsed[$locationId] ?? null;
 
             $pathData[] = [
                 'location_id' => $locationId,
                 'location_name' => $location->name ?? "Location #{$locationId}",
-                'route_id' => $routeUsed[$locationId] ?? null,
+                'route_id' => $routeId,
             ];
 
-            if (isset($routeUsed[$locationId]) && !in_array($routeUsed[$locationId], $routes)) {
-                $routes[] = $routeUsed[$locationId];
+            // Only add non-null routes and avoid duplicates
+            if ($routeId !== null && !in_array($routeId, $routes, true)) {
+                $routes[] = $routeId;
             }
         }
 
@@ -187,7 +196,7 @@ class RouteGraphService
 
         $targetDate = $forDate ?? $after->copy()->startOfDay();
 
-        // Get next scheduled time for this route
+        // Get next scheduled time for this route (returns H:i string)
         $nextTime = $route->getNextScheduledTime($after, $forDate);
         if (!$nextTime) {
             return null;
@@ -196,7 +205,7 @@ class RouteGraphService
         // Check if run instance already exists
         $run = RunInstance::where('route_id', $routeId)
             ->whereDate('scheduled_date', $targetDate)
-            ->where('scheduled_time', $nextTime->format('H:i'))
+            ->where('scheduled_time', $nextTime)
             ->first();
 
         // Create if doesn't exist
@@ -284,9 +293,6 @@ class RouteGraphService
         // Find the stop for this location
         $stop = $run->route->stops()
             ->where('location_id', $locationId)
-            ->orWhereHas('vendorClusterLocations', function ($q) use ($locationId) {
-                $q->where('vendor_location_id', $locationId);
-            })
             ->first();
 
         if (!$stop) {

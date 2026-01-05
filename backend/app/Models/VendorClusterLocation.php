@@ -12,7 +12,7 @@ class VendorClusterLocation extends Model
 
     protected $fillable = [
         'route_stop_id',
-        'vendor_location_id',
+        'vendor_id',
         'location_order',
         'is_optional',
         'created_by',
@@ -35,11 +35,11 @@ class VendorClusterLocation extends Model
     }
 
     /**
-     * The vendor location
+     * The vendor
      */
-    public function vendorLocation(): BelongsTo
+    public function vendor(): BelongsTo
     {
-        return $this->belongsTo(ServiceLocation::class, 'vendor_location_id');
+        return $this->belongsTo(Vendor::class);
     }
 
     /**

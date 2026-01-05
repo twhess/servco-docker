@@ -9,7 +9,7 @@ interface RouteStopFormData {
   estimated_duration_minutes: number
   notes?: string
   vendor_locations?: Array<{
-    vendor_location_id: number
+    vendor_id: number
     location_order: number
     is_optional: boolean
   }>
@@ -48,9 +48,14 @@ export const useRoutesStore = defineStore('routes', {
 
     routesByLocation: (state) => (locationId: number) => {
       return state.routes.filter(r =>
+        r.stops?.some(s => s.location_id === locationId)
+      )
+    },
+
+    routesByVendor: (state) => (vendorId: number) => {
+      return state.routes.filter(r =>
         r.stops?.some(s =>
-          s.location_id === locationId ||
-          s.vendor_cluster_locations?.some(v => v.vendor_location_id === locationId)
+          s.vendor_cluster_locations?.some(v => v.vendor_id === vendorId)
         )
       )
     },

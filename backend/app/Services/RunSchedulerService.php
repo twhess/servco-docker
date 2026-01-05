@@ -84,7 +84,7 @@ class RunSchedulerService
 
         // Create assignment event
         $request->events()->create([
-            'event_type' => 'assigned_to_run',
+            'event_type' => 'assigned',
             'notes' => "Assigned to run #{$run->id} on {$run->scheduled_date->toDateString()} at {$run->scheduled_time}",
             'event_at' => now(),
             'user_id' => auth()->id(),
@@ -111,9 +111,15 @@ class RunSchedulerService
             return true;
         }
 
-        $originId = $request->origin_location_id;
         $destinationId = $request->receiving_location_id;
 
+        // For vendor pickups/returns: use vendor-based routing
+        if ($request->vendor_id && $destinationId) {
+            return $this->assignVendorRoute($request);
+        }
+
+        // For transfers: use location-to-location path finding
+        $originId = $request->origin_location_id;
         if (!$originId || !$destinationId) {
             Log::warning("Request #{$request->id} missing origin or destination, cannot auto-assign");
             return false;
@@ -137,6 +143,68 @@ class RunSchedulerService
     }
 
     /**
+     * Assign request to a route that serves the vendor and destination
+     * Used for vendor pickups and returns
+     */
+    private function assignVendorRoute(PartsRequest $request): bool
+    {
+        $vendorId = $request->vendor_id;
+        $destinationId = $request->receiving_location_id;
+
+        // Find routes that have both the vendor (in a cluster) and the destination location
+        $route = Route::active()
+            ->whereHas('stops', function ($q) use ($vendorId) {
+                $q->where('stop_type', 'VENDOR_CLUSTER')
+                    ->whereHas('vendorClusterLocations', function ($vq) use ($vendorId) {
+                        $vq->where('vendor_id', $vendorId);
+                    });
+            })
+            ->whereHas('stops', function ($q) use ($destinationId) {
+                $q->where('location_id', $destinationId);
+            })
+            ->first();
+
+        if (!$route) {
+            Log::warning("No route found serving vendor #{$vendorId} and destination #{$destinationId} for request #{$request->id}");
+            return false;
+        }
+
+        // Find the vendor cluster stop and destination stop
+        $vendorStop = $route->stops()
+            ->where('stop_type', 'VENDOR_CLUSTER')
+            ->whereHas('vendorClusterLocations', function ($vq) use ($vendorId) {
+                $vq->where('vendor_id', $vendorId);
+            })
+            ->first();
+
+        $destinationStop = $route->stops()
+            ->where('location_id', $destinationId)
+            ->first();
+
+        if (!$vendorStop || !$destinationStop) {
+            Log::warning("Could not find vendor or destination stops on route #{$route->id} for request #{$request->id}");
+            return false;
+        }
+
+        // Verify the vendor stop comes before the destination stop in route order
+        if ($vendorStop->stop_order >= $destinationStop->stop_order) {
+            Log::warning("Vendor stop (order {$vendorStop->stop_order}) must come before destination (order {$destinationStop->stop_order}) on route #{$route->id}");
+            return false;
+        }
+
+        // Find next available run
+        $run = $this->findNextAvailableRun($route->id, now(), $request->scheduled_for_date);
+        if (!$run) {
+            Log::warning("No available run found for route #{$route->id}");
+            return false;
+        }
+
+        $this->assignRequestToRun($request, $run->id, $vendorStop->id, $destinationStop->id);
+        Log::info("Vendor pickup request #{$request->id} assigned to run #{$run->id} on route #{$route->id}");
+        return true;
+    }
+
+    /**
      * Assign request to a direct route (single hop)
      */
     private function assignDirectRoute(PartsRequest $request, array $path): bool
@@ -152,18 +220,21 @@ class RunSchedulerService
         }
 
         // Find pickup and dropoff stops
+        // For pickup: check if it matches a location or if vendor matches a vendor cluster
         $pickupStop = $run->route->stops()
-            ->where('location_id', $request->origin_location_id)
-            ->orWhereHas('vendorClusterLocations', function ($q) use ($request) {
-                $q->where('vendor_location_id', $request->origin_location_id);
+            ->where(function ($q) use ($request) {
+                $q->where('location_id', $request->origin_location_id);
+                // Also check vendor clusters if the request has a vendor_id
+                if ($request->vendor_id) {
+                    $q->orWhereHas('vendorClusterLocations', function ($vq) use ($request) {
+                        $vq->where('vendor_id', $request->vendor_id);
+                    });
+                }
             })
             ->first();
 
         $dropoffStop = $run->route->stops()
             ->where('location_id', $request->receiving_location_id)
-            ->orWhereHas('vendorClusterLocations', function ($q) use ($request) {
-                $q->where('vendor_location_id', $request->receiving_location_id);
-            })
             ->first();
 
         if (!$pickupStop || !$dropoffStop) {
@@ -192,7 +263,7 @@ class RunSchedulerService
 
             // Create event
             $request->events()->create([
-                'event_type' => 'multi_leg_created',
+                'event_type' => 'status_changed',
                 'notes' => "Multi-leg routing created with {$path['hops']} segments",
                 'event_at' => now(),
                 'user_id' => auth()->id(),
@@ -258,7 +329,7 @@ class RunSchedulerService
 
         // Create unassignment event
         $request->events()->create([
-            'event_type' => 'unassigned_from_run',
+            'event_type' => 'unassigned',
             'notes' => "Unassigned from run #{$oldRunId}. Reason: {$reason}",
             'event_at' => now(),
             'user_id' => auth()->id(),

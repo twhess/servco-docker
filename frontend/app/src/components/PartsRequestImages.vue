@@ -71,8 +71,120 @@
       {{ images.length }} image{{ images.length !== 1 ? 's' : '' }}
     </div>
 
-    <!-- Carousel Dialog -->
-    <q-dialog v-model="showCarousel" maximized>
+    <!-- Image Preview Popup (inline overlay, not full screen) -->
+    <q-dialog v-model="showCarousel" position="standard">
+      <q-card class="image-preview-card">
+        <!-- Header -->
+        <q-card-section class="row items-center q-py-xs q-px-sm bg-grey-2">
+          <div class="text-grey-8 text-caption">
+            {{ currentIndex + 1 }} / {{ images.length }}
+          </div>
+          <q-space />
+          <q-btn
+            flat
+            dense
+            round
+            size="sm"
+            icon="fullscreen"
+            color="grey-7"
+            @click="openFullScreen"
+          >
+            <q-tooltip>Full screen</q-tooltip>
+          </q-btn>
+          <q-btn
+            flat
+            dense
+            round
+            size="sm"
+            icon="download"
+            color="grey-7"
+            @click="downloadImage"
+          >
+            <q-tooltip>Download</q-tooltip>
+          </q-btn>
+          <q-btn
+            v-if="canDelete && currentImage"
+            flat
+            dense
+            round
+            size="sm"
+            icon="delete"
+            color="negative"
+            @click="confirmDelete"
+          >
+            <q-tooltip>Delete</q-tooltip>
+          </q-btn>
+          <q-btn
+            flat
+            dense
+            round
+            size="sm"
+            icon="close"
+            color="grey-7"
+            v-close-popup
+          />
+        </q-card-section>
+
+        <!-- Carousel -->
+        <q-card-section class="q-pa-none carousel-container">
+          <q-carousel
+            v-model="currentSlide"
+            swipeable
+            animated
+            navigation
+            arrows
+            control-color="primary"
+            class="bg-grey-3 preview-carousel"
+            @update:model-value="onSlideChange"
+          >
+            <q-carousel-slide
+              v-for="(img, index) in images"
+              :key="img.id"
+              :name="index"
+              class="column no-wrap flex-center q-pa-sm"
+            >
+              <q-img
+                :src="img.url"
+                :alt="img.caption || img.original_filename"
+                fit="contain"
+                class="carousel-image"
+              >
+                <template #loading>
+                  <div class="flex flex-center full-height">
+                    <q-spinner color="primary" size="40px" />
+                  </div>
+                </template>
+              </q-img>
+            </q-carousel-slide>
+          </q-carousel>
+        </q-card-section>
+
+        <!-- Caption / Info -->
+        <q-card-section v-if="currentImage" class="bg-grey-1 q-py-xs q-px-sm">
+          <div v-if="currentImage.caption" class="text-body2 q-mb-xs">
+            {{ currentImage.caption }}
+          </div>
+          <div class="row items-center text-grey-7 text-caption">
+            <div v-if="currentImage.uploaded_by" class="q-mr-md">
+              By {{ currentImage.uploaded_by.name }}
+            </div>
+            <div v-if="currentImage.uploaded_at">
+              {{ formatDateTime(currentImage.uploaded_at) }}
+            </div>
+            <q-space />
+            <q-badge
+              v-if="currentImage.source !== 'requester'"
+              :color="currentImage.source === 'pickup' ? 'blue' : 'green'"
+            >
+              {{ currentImage.source === 'pickup' ? 'Pickup' : 'Delivery' }}
+            </q-badge>
+          </div>
+        </q-card-section>
+      </q-card>
+    </q-dialog>
+
+    <!-- Full Screen Dialog (opened from preview) -->
+    <q-dialog v-model="showFullScreen" maximized>
       <q-card class="bg-black column full-height">
         <!-- Header -->
         <q-card-section class="row items-center q-py-sm bg-grey-10">
@@ -80,6 +192,16 @@
             {{ currentIndex + 1 }} / {{ images.length }}
           </div>
           <q-space />
+          <q-btn
+            flat
+            dense
+            round
+            icon="download"
+            color="white"
+            @click="downloadImage"
+          >
+            <q-tooltip class="bg-grey-8">Download</q-tooltip>
+          </q-btn>
           <q-btn
             v-if="canDelete && currentImage"
             flat
@@ -99,8 +221,8 @@
           />
         </q-card-section>
 
-        <!-- Carousel -->
-        <q-card-section class="col q-pa-none carousel-container">
+        <!-- Full Screen Carousel -->
+        <q-card-section class="col q-pa-none fullscreen-carousel-container">
           <q-carousel
             v-model="currentSlide"
             swipeable
@@ -120,7 +242,7 @@
                 :src="img.url"
                 :alt="img.caption || img.original_filename"
                 fit="contain"
-                class="carousel-image"
+                class="fullscreen-carousel-image"
               >
                 <template #loading>
                   <div class="flex flex-center full-height">
@@ -145,11 +267,12 @@
               {{ formatDateTime(currentImage.uploaded_at) }}
             </div>
             <q-space />
-            <div v-if="currentImage.source !== 'requester'">
-              <q-badge :color="currentImage.source === 'pickup' ? 'blue' : 'green'">
-                {{ currentImage.source === 'pickup' ? 'Pickup' : 'Delivery' }}
-              </q-badge>
-            </div>
+            <q-badge
+              v-if="currentImage.source !== 'requester'"
+              :color="currentImage.source === 'pickup' ? 'blue' : 'green'"
+            >
+              {{ currentImage.source === 'pickup' ? 'Pickup' : 'Delivery' }}
+            </q-badge>
           </div>
         </q-card-section>
       </q-card>
@@ -207,6 +330,7 @@ const imageInputRef = ref<HTMLInputElement | null>(null);
 
 // Carousel state
 const showCarousel = ref(false);
+const showFullScreen = ref(false);
 const currentSlide = ref(0);
 const currentIndex = ref(0);
 
@@ -248,11 +372,16 @@ async function loadImages() {
   loading.value = true;
   try {
     const fetchedImages = await store.fetchImages(props.requestId, props.source);
-    // If showRunnerImages is false and no source filter, only show requester images
-    if (!props.showRunnerImages && !props.source) {
-      images.value = fetchedImages.filter(img => img.source === 'requester');
-    } else {
+    // Filter based on props
+    if (props.source) {
+      // If specific source is provided, use it (already filtered by API)
       images.value = fetchedImages;
+    } else if (props.showRunnerImages) {
+      // Show only runner photos (pickup and delivery)
+      images.value = fetchedImages.filter(img => img.source === 'pickup' || img.source === 'delivery');
+    } else {
+      // Default: only show requester images
+      images.value = fetchedImages.filter(img => img.source === 'requester');
     }
     emit('images-changed', images.value);
     emit('count-changed', images.value.length);
@@ -335,6 +464,24 @@ function openCarousel(index: number) {
 
 function onSlideChange(newSlide: string | number) {
   currentIndex.value = typeof newSlide === 'number' ? newSlide : parseInt(newSlide, 10);
+}
+
+function openFullScreen() {
+  showCarousel.value = false;
+  showFullScreen.value = true;
+}
+
+function downloadImage() {
+  if (!currentImage.value) return;
+
+  // Create a temporary link to download the image
+  const link = document.createElement('a');
+  link.href = currentImage.value.url;
+  link.download = currentImage.value.original_filename || 'image';
+  link.target = '_blank';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 }
 
 function confirmDelete() {
@@ -428,8 +575,35 @@ onMounted(() => {
   right: 4px;
 }
 
+/* Inline preview popup card */
+.image-preview-card {
+  width: 90vw;
+  max-width: 500px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+
 .carousel-container {
   position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.preview-carousel {
+  height: 300px;
+}
+
+@media (min-height: 600px) {
+  .preview-carousel {
+    height: 350px;
+  }
+}
+
+@media (min-height: 800px) {
+  .preview-carousel {
+    height: 450px;
+  }
 }
 
 .carousel-image {
@@ -437,19 +611,42 @@ onMounted(() => {
   max-height: 100%;
 }
 
-:deep(.q-carousel) {
+/* Full screen carousel styles */
+.fullscreen-carousel-container {
+  position: relative;
+}
+
+.fullscreen-carousel-image {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+:deep(.fullscreen-carousel-container .q-carousel) {
   height: 100% !important;
 }
 
-:deep(.q-carousel__slide) {
+:deep(.fullscreen-carousel-container .q-carousel__slide) {
   padding: 0;
 }
 
-:deep(.q-carousel__navigation) {
+:deep(.fullscreen-carousel-container .q-carousel__navigation) {
   bottom: 16px;
 }
 
-:deep(.q-carousel__navigation-icon) {
+:deep(.fullscreen-carousel-container .q-carousel__navigation-icon) {
   font-size: 10px;
+}
+
+/* Preview carousel navigation */
+:deep(.preview-carousel .q-carousel__navigation) {
+  bottom: 8px;
+}
+
+:deep(.preview-carousel .q-carousel__navigation-icon) {
+  font-size: 8px;
+}
+
+:deep(.preview-carousel .q-carousel__arrow) {
+  font-size: 16px;
 }
 </style>

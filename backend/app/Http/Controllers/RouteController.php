@@ -46,7 +46,7 @@ class RouteController extends Controller
         $route = Route::with([
             'startLocation',
             'stops.location',
-            'stops.vendorClusterLocations.vendorLocation',
+            'stops.vendorClusterLocations.vendor',
             'schedules',
             'runInstances' => function ($query) {
                 $query->where('scheduled_date', '>=', today())->orderBy('scheduled_date');
@@ -173,24 +173,28 @@ class RouteController extends Controller
             'estimated_duration_minutes' => 'required|integer|min:1',
             'notes' => 'nullable|string',
             'vendor_locations' => 'array', // For VENDOR_CLUSTER type
-            'vendor_locations.*.vendor_location_id' => 'exists:service_locations,id',
+            'vendor_locations.*.vendor_id' => 'exists:vendors,id',
             'vendor_locations.*.location_order' => 'integer|min:0',
             'vendor_locations.*.is_optional' => 'boolean',
         ]);
 
         DB::beginTransaction();
         try {
-            $validated['route_id'] = $route->id;
-            $validated['created_by'] = auth()->id();
-            $validated['updated_by'] = auth()->id();
+            // Extract vendor_locations before creating the stop
+            $vendorLocations = $validated['vendor_locations'] ?? [];
+            $stopData = collect($validated)->except('vendor_locations')->toArray();
 
-            $stop = RouteStop::create($validated);
+            $stopData['route_id'] = $route->id;
+            $stopData['created_by'] = auth()->id();
+            $stopData['updated_by'] = auth()->id();
+
+            $stop = RouteStop::create($stopData);
 
             // Add vendor cluster locations if provided
-            if ($validated['stop_type'] === 'VENDOR_CLUSTER' && !empty($validated['vendor_locations'])) {
-                foreach ($validated['vendor_locations'] as $vendorLocation) {
+            if ($stopData['stop_type'] === 'VENDOR_CLUSTER' && !empty($vendorLocations)) {
+                foreach ($vendorLocations as $vendorLocation) {
                     $stop->vendorClusterLocations()->create([
-                        'vendor_location_id' => $vendorLocation['vendor_location_id'],
+                        'vendor_id' => $vendorLocation['vendor_id'],
                         'location_order' => $vendorLocation['location_order'] ?? 0,
                         'is_optional' => $vendorLocation['is_optional'] ?? false,
                         'created_by' => auth()->id(),
@@ -208,7 +212,7 @@ class RouteController extends Controller
 
             return response()->json([
                 'message' => 'Stop added successfully',
-                'data' => $stop->load(['location', 'vendorClusterLocations.vendorLocation']),
+                'data' => $stop->load(['location', 'vendorClusterLocations.vendor']),
             ], 201);
         } catch (\Exception $e) {
             DB::rollBack();
@@ -233,21 +237,53 @@ class RouteController extends Controller
             'stop_order' => 'sometimes|integer|min:1',
             'estimated_duration_minutes' => 'sometimes|integer|min:1',
             'notes' => 'nullable|string',
+            'vendor_locations' => 'array',
+            'vendor_locations.*.vendor_id' => 'exists:vendors,id',
+            'vendor_locations.*.location_order' => 'integer|min:0',
+            'vendor_locations.*.is_optional' => 'boolean',
         ]);
 
-        $validated['updated_by'] = auth()->id();
+        DB::beginTransaction();
+        try {
+            $stopData = collect($validated)->except('vendor_locations')->toArray();
+            $stopData['updated_by'] = auth()->id();
 
-        $stop->update($validated);
+            $stop->update($stopData);
 
-        // Rebuild cache
-        $this->routeGraphService->rebuildCache();
+            // Update vendor cluster locations if this is a VENDOR_CLUSTER type
+            $stopType = $validated['stop_type'] ?? $stop->stop_type;
+            if ($stopType === 'VENDOR_CLUSTER' && isset($validated['vendor_locations'])) {
+                // Delete existing vendor cluster locations
+                $stop->vendorClusterLocations()->delete();
 
-        Log::info("Stop updated: #{$stop->id} on route #{$route->id}");
+                // Create new ones
+                foreach ($validated['vendor_locations'] as $vendorLocation) {
+                    $stop->vendorClusterLocations()->create([
+                        'vendor_id' => $vendorLocation['vendor_id'],
+                        'location_order' => $vendorLocation['location_order'] ?? 0,
+                        'is_optional' => $vendorLocation['is_optional'] ?? false,
+                        'created_by' => auth()->id(),
+                        'updated_by' => auth()->id(),
+                    ]);
+                }
+            }
 
-        return response()->json([
-            'message' => 'Stop updated successfully',
-            'data' => $stop->load(['location', 'vendorClusterLocations.vendorLocation']),
-        ]);
+            DB::commit();
+
+            // Rebuild cache
+            $this->routeGraphService->rebuildCache();
+
+            Log::info("Stop updated: #{$stop->id} on route #{$route->id}");
+
+            return response()->json([
+                'message' => 'Stop updated successfully',
+                'data' => $stop->load(['location', 'vendorClusterLocations.vendor']),
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error("Failed to update stop #{$stopId} on route #{$id}: " . $e->getMessage());
+            throw $e;
+        }
     }
 
     /**

@@ -22,6 +22,11 @@ Route::get('/health', function () {
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
 
+// Image serving routes - outside auth middleware because <img> tags can't send auth headers
+// These routes use opaque IDs (no direct file paths exposed) for basic security
+Route::get('/parts-requests/{id}/images/{imageId}', [PartsRequestController::class, 'showImage']);
+Route::get('/parts-requests/{id}/images/{imageId}/thumbnail', [PartsRequestController::class, 'showImageThumbnail']);
+
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user', [AuthController::class, 'user']);
     Route::post('/logout', [AuthController::class, 'logout']);
@@ -97,13 +102,17 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/parts-requests/{id}/documents/{documentId}', [PartsRequestController::class, 'deleteDocument']);
     Route::get('/parts-requests/{id}/documents/{documentId}/download', [PartsRequestController::class, 'downloadDocument']);
 
-    // Parts Request Images
+    // Parts Request Images (showImage and showImageThumbnail are public routes above)
     Route::get('/parts-requests/{id}/images', [PartsRequestController::class, 'images']);
     Route::post('/parts-requests/{id}/images', [PartsRequestController::class, 'uploadImage']);
-    Route::get('/parts-requests/{id}/images/{imageId}', [PartsRequestController::class, 'showImage']);
-    Route::get('/parts-requests/{id}/images/{imageId}/thumbnail', [PartsRequestController::class, 'showImageThumbnail']);
     Route::put('/parts-requests/{id}/images/{imageId}', [PartsRequestController::class, 'updateImage']);
     Route::delete('/parts-requests/{id}/images/{imageId}', [PartsRequestController::class, 'deleteImage']);
+
+    // Parts Request Notes
+    Route::get('/parts-requests/{id}/notes', [PartsRequestController::class, 'notes']);
+    Route::post('/parts-requests/{id}/notes', [PartsRequestController::class, 'storeNote']);
+    Route::put('/parts-requests/{id}/notes/{noteId}', [PartsRequestController::class, 'updateNote']);
+    Route::delete('/parts-requests/{id}/notes/{noteId}', [PartsRequestController::class, 'deleteNote']);
 
     // Roles & Permissions
     Route::get('/roles', [RoleController::class, 'index']);
@@ -170,6 +179,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/parts-requests/{id}/actions/{action}', [PartsRequestController::class, 'executeAction']);
     Route::get('/parts-requests/{id}/available-actions', [PartsRequestController::class, 'availableActions']);
     Route::post('/parts-requests/{id}/assign-to-run', [PartsRequestController::class, 'assignToRun']);
+    Route::post('/parts-requests/{id}/not-ready', [PartsRequestController::class, 'markNotReady']);
     Route::get('/parts-requests/{id}/segments', [PartsRequestController::class, 'segments']);
     Route::get('/parts-requests/needs-staging', [PartsRequestController::class, 'needsStaging']);
     Route::get('/parts-requests/feed', [PartsRequestController::class, 'feed']);

@@ -697,11 +697,12 @@
                 v-for="(img, index) in pendingImages"
                 :key="index"
                 class="pending-image-thumb"
+                @click="openPendingCarousel(index)"
               >
                 <q-img
                   :src="img.preview"
                   ratio="1"
-                  class="rounded-borders"
+                  class="rounded-borders cursor-pointer"
                 />
                 <q-btn
                   round
@@ -710,7 +711,7 @@
                   icon="close"
                   color="negative"
                   class="remove-image-btn"
-                  @click="removePendingImage(index)"
+                  @click.stop="removePendingImage(index)"
                 />
               </div>
             </div>
@@ -809,10 +810,10 @@
         </q-card-section>
 
         <!-- Scrollable Content -->
-        <q-card-section class="col q-pa-md" style="overflow-y: auto; overflow-x: hidden;">
-          <div v-if="viewingRequest" class="q-gutter-md view-dialog-content">
+        <q-card-section class="col q-pa-md" style="overflow-y: auto;">
+            <div v-if="viewingRequest" class="view-dialog-content">
             <!-- Type & Urgency - inline chips -->
-            <div class="row items-center q-gutter-xs">
+            <div class="row items-center chip-row">
               <q-chip
                 dense
                 size="sm"
@@ -832,7 +833,7 @@
             </div>
 
             <!-- From → To Side by Side -->
-            <div class="row items-start q-gutter-sm bg-grey-1 q-pa-sm rounded-borders">
+            <div class="row items-start from-to-row bg-grey-1 q-pa-sm rounded-borders">
               <!-- From -->
               <div class="col">
                 <div class="text-caption text-weight-bold text-grey-8">FROM</div>
@@ -858,7 +859,7 @@
             </div>
 
             <!-- Requested By & Assigned To - inline -->
-            <div class="row q-gutter-md">
+            <div class="row info-row">
               <div class="col">
                 <div class="text-caption text-grey-7">Requested By</div>
                 <div class="text-body2">{{ viewingRequest.requested_by.name }}</div>
@@ -884,113 +885,141 @@
               </div>
             </div>
 
-            <!-- Line Items Section (Collapsible) -->
-            <q-expansion-item
-              v-model="itemsExpanded"
-              dense
-              header-class="bg-grey-2 text-grey-8"
-              expand-icon-class="text-grey-7"
-            >
-              <template v-slot:header>
-                <q-item-section>
-                  <q-item-label class="text-caption text-weight-medium">
-                    Line Items
-                    <q-badge v-if="itemsCount > 0" color="primary" class="q-ml-sm">
-                      {{ itemsCount }}
-                    </q-badge>
-                  </q-item-label>
-                </q-item-section>
-              </template>
-              <div class="view-section q-pa-sm">
-                <PartsRequestItems
-                  :request-id="viewingRequest.id"
-                  :readonly="false"
-                  :show-verification="true"
-                  @count-changed="onItemsCountChanged"
-                />
-              </div>
-            </q-expansion-item>
+            <!-- Collapsible Sections - only one open at a time -->
+            <q-list>
+              <!-- Line Items Section -->
+              <q-expansion-item
+                group="viewDialogSections"
+                dense
+                header-class="bg-grey-2 text-grey-8"
+                expand-icon-class="text-grey-7"
+              >
+                <template v-slot:header>
+                  <q-item-section>
+                    <q-item-label class="text-caption text-weight-medium">
+                      Line Items
+                      <q-badge v-if="itemsCount > 0" color="primary" class="q-ml-sm">
+                        {{ itemsCount }}
+                      </q-badge>
+                    </q-item-label>
+                  </q-item-section>
+                </template>
+                <div class="q-pa-sm">
+                  <PartsRequestItems
+                    :request-id="viewingRequest.id"
+                    :readonly="false"
+                    :show-verification="true"
+                    @count-changed="onItemsCountChanged"
+                  />
+                </div>
+              </q-expansion-item>
 
-            <!-- Documents Section (Collapsible) -->
-            <q-expansion-item
-              v-model="documentsExpanded"
-              dense
-              header-class="bg-grey-2 text-grey-8"
-              expand-icon-class="text-grey-7"
-            >
-              <template v-slot:header>
-                <q-item-section>
-                  <q-item-label class="text-caption text-weight-medium">
-                    Documents
-                    <q-badge v-if="documentsCount > 0" color="primary" class="q-ml-sm">
-                      {{ documentsCount }}
-                    </q-badge>
-                  </q-item-label>
-                </q-item-section>
-              </template>
-              <div class="view-section q-pa-sm">
-                <PartsRequestDocuments
-                  :request-id="viewingRequest.id"
-                  :readonly="false"
-                  @count-changed="onDocumentsCountChanged"
-                />
-              </div>
-            </q-expansion-item>
+              <!-- Notes Section -->
+              <q-expansion-item
+                group="viewDialogSections"
+                dense
+                header-class="bg-grey-2 text-grey-8"
+                expand-icon-class="text-grey-7"
+              >
+                <template v-slot:header>
+                  <q-item-section>
+                    <q-item-label class="text-caption text-weight-medium">
+                      Notes
+                      <q-badge v-if="notesCount > 0" color="orange" class="q-ml-sm">
+                        {{ notesCount }}
+                      </q-badge>
+                    </q-item-label>
+                  </q-item-section>
+                </template>
+                <div class="q-pa-sm">
+                  <PartsRequestNotes
+                    :parts-request-id="viewingRequest.id"
+                    @count-changed="onNotesCountChanged"
+                  />
+                </div>
+              </q-expansion-item>
 
-            <!-- Info Photos Section (Collapsible) -->
-            <q-expansion-item
-              v-model="photosExpanded"
-              dense
-              header-class="bg-grey-2 text-grey-8"
-              expand-icon-class="text-grey-7"
-            >
-              <template v-slot:header>
-                <q-item-section>
-                  <q-item-label class="text-caption text-weight-medium">
-                    Photos
-                    <q-badge v-if="photosCount > 0" color="primary" class="q-ml-sm">
-                      {{ photosCount }}
-                    </q-badge>
-                  </q-item-label>
-                </q-item-section>
-              </template>
-              <div class="view-section q-pa-sm">
-                <PartsRequestImages
-                  :request-id="viewingRequest.id"
-                  source="requester"
-                  :readonly="false"
-                  @count-changed="onPhotosCountChanged"
-                />
-              </div>
-            </q-expansion-item>
+              <!-- Documents Section -->
+              <q-expansion-item
+                group="viewDialogSections"
+                dense
+                header-class="bg-grey-2 text-grey-8"
+                expand-icon-class="text-grey-7"
+              >
+                <template v-slot:header>
+                  <q-item-section>
+                    <q-item-label class="text-caption text-weight-medium">
+                      Documents
+                      <q-badge v-if="documentsCount > 0" color="primary" class="q-ml-sm">
+                        {{ documentsCount }}
+                      </q-badge>
+                    </q-item-label>
+                  </q-item-section>
+                </template>
+                <div class="q-pa-sm">
+                  <PartsRequestDocuments
+                    :request-id="viewingRequest.id"
+                    :readonly="false"
+                    @count-changed="onDocumentsCountChanged"
+                  />
+                </div>
+              </q-expansion-item>
 
-            <!-- Runner Photos Section (Collapsible) -->
-            <q-expansion-item
-              v-model="runnerPhotosExpanded"
-              dense
-              header-class="bg-grey-2 text-grey-8"
-              expand-icon-class="text-grey-7"
-            >
-              <template v-slot:header>
-                <q-item-section>
-                  <q-item-label class="text-caption text-weight-medium">
-                    Runner Photos
-                    <q-badge v-if="runnerPhotosCount > 0" color="blue" class="q-ml-sm">
-                      {{ runnerPhotosCount }}
-                    </q-badge>
-                  </q-item-label>
-                </q-item-section>
-              </template>
-              <div class="view-section q-pa-sm">
-                <PartsRequestImages
-                  :request-id="viewingRequest.id"
-                  :show-runner-images="true"
-                  :readonly="true"
-                  @count-changed="onRunnerPhotosCountChanged"
-                />
-              </div>
-            </q-expansion-item>
-          </div>
+              <!-- Photos Section -->
+              <q-expansion-item
+                group="viewDialogSections"
+                dense
+                header-class="bg-grey-2 text-grey-8"
+                expand-icon-class="text-grey-7"
+              >
+                <template v-slot:header>
+                  <q-item-section>
+                    <q-item-label class="text-caption text-weight-medium">
+                      Photos
+                      <q-badge v-if="photosCount > 0" color="primary" class="q-ml-sm">
+                        {{ photosCount }}
+                      </q-badge>
+                    </q-item-label>
+                  </q-item-section>
+                </template>
+                <div class="q-pa-sm">
+                  <PartsRequestImages
+                    :request-id="viewingRequest.id"
+                    source="requester"
+                    :readonly="false"
+                    @count-changed="onPhotosCountChanged"
+                  />
+                </div>
+              </q-expansion-item>
+
+              <!-- Runner Photos Section -->
+              <q-expansion-item
+                group="viewDialogSections"
+                dense
+                header-class="bg-grey-2 text-grey-8"
+                expand-icon-class="text-grey-7"
+              >
+                <template v-slot:header>
+                  <q-item-section>
+                    <q-item-label class="text-caption text-weight-medium">
+                      Runner Photos
+                      <q-badge v-if="runnerPhotosCount > 0" color="blue" class="q-ml-sm">
+                        {{ runnerPhotosCount }}
+                      </q-badge>
+                    </q-item-label>
+                  </q-item-section>
+                </template>
+                <div class="q-pa-sm">
+                  <PartsRequestImages
+                    :request-id="viewingRequest.id"
+                    :show-runner-images="true"
+                    :readonly="true"
+                    @count-changed="onRunnerPhotosCountChanged"
+                  />
+                </div>
+              </q-expansion-item>
+            </q-list>
+            </div>
         </q-card-section>
 
         <!-- Footer Actions -->
@@ -1057,6 +1086,83 @@
         </q-card-section>
       </q-card>
     </q-dialog>
+
+    <!-- Pending Images Preview Popup (inline overlay, not full screen) -->
+    <q-dialog v-model="showPendingCarousel" position="standard">
+      <q-card class="pending-preview-card">
+        <!-- Header -->
+        <q-card-section class="row items-center q-py-xs q-px-sm bg-grey-2">
+          <div class="text-grey-8 text-caption">
+            {{ pendingCarouselIndex + 1 }} / {{ pendingImages.length }}
+          </div>
+          <q-space />
+          <q-btn
+            flat
+            dense
+            round
+            size="sm"
+            icon="delete"
+            color="negative"
+            @click="removePendingImageFromCarousel"
+          >
+            <q-tooltip>Remove</q-tooltip>
+          </q-btn>
+          <q-btn
+            flat
+            dense
+            round
+            size="sm"
+            icon="close"
+            color="grey-7"
+            v-close-popup
+          />
+        </q-card-section>
+
+        <!-- Carousel -->
+        <q-card-section class="q-pa-none pending-carousel-container">
+          <q-carousel
+            v-model="pendingCarouselSlide"
+            swipeable
+            animated
+            navigation
+            arrows
+            control-color="primary"
+            class="bg-grey-3 pending-preview-carousel"
+            @update:model-value="onPendingSlideChange"
+          >
+            <q-carousel-slide
+              v-for="(img, index) in pendingImages"
+              :key="index"
+              :name="index"
+              class="column no-wrap flex-center q-pa-sm"
+            >
+              <q-img
+                :src="img.preview"
+                :alt="img.file.name"
+                fit="contain"
+                class="pending-carousel-image"
+              >
+                <template #loading>
+                  <div class="flex flex-center full-height">
+                    <q-spinner color="primary" size="40px" />
+                  </div>
+                </template>
+              </q-img>
+            </q-carousel-slide>
+          </q-carousel>
+        </q-card-section>
+
+        <!-- Footer with file name -->
+        <q-card-section class="bg-grey-1 q-py-xs q-px-sm">
+          <div class="text-body2 ellipsis">
+            {{ pendingImages[pendingCarouselIndex]?.file.name || '' }}
+          </div>
+          <div class="text-grey-7 text-caption">
+            Will be uploaded when request is created
+          </div>
+        </q-card-section>
+      </q-card>
+    </q-dialog>
   </q-page>
 </template>
 
@@ -1078,6 +1184,7 @@ import CustomerAddressSelect from 'src/components/CustomerAddressSelect.vue';
 import PartsRequestItems from 'src/components/PartsRequestItems.vue';
 import PartsRequestDocuments from 'src/components/PartsRequestDocuments.vue';
 import PartsRequestImages from 'src/components/PartsRequestImages.vue';
+import PartsRequestNotes from 'src/components/PartsRequestNotes.vue';
 import { useVendorsStore } from 'src/stores/vendors';
 import { useCustomersStore } from 'src/stores/customers';
 import type { Vendor, Address } from 'src/types/vendors';
@@ -1129,15 +1236,22 @@ interface PendingImage {
 const pendingImages = ref<PendingImage[]>([]);
 const pendingImageInputRef = ref<HTMLInputElement | null>(null);
 
+// Pending images carousel state
+const showPendingCarousel = ref(false);
+const pendingCarouselSlide = ref(0);
+const pendingCarouselIndex = ref(0);
+
 // View dialog expansion states and counts
 const itemsExpanded = ref(false);
 const documentsExpanded = ref(false);
 const photosExpanded = ref(false);
 const runnerPhotosExpanded = ref(false);
+const notesExpanded = ref(false);
 const itemsCount = ref(0);
 const documentsCount = ref(0);
 const photosCount = ref(0);
 const runnerPhotosCount = ref(0);
+const notesCount = ref(0);
 
 // Create form expansion states (auto-expand when data exists)
 const createItemsExpanded = ref(false);
@@ -1699,6 +1813,38 @@ function handlePendingImageSelect(event: Event) {
 
 function removePendingImage(index: number) {
   pendingImages.value.splice(index, 1);
+  // If carousel is open and we deleted the current image, adjust
+  if (showPendingCarousel.value) {
+    if (pendingImages.value.length === 0) {
+      showPendingCarousel.value = false;
+    } else {
+      pendingCarouselIndex.value = Math.min(pendingCarouselIndex.value, pendingImages.value.length - 1);
+      pendingCarouselSlide.value = pendingCarouselIndex.value;
+    }
+  }
+}
+
+function openPendingCarousel(index: number) {
+  pendingCarouselIndex.value = index;
+  pendingCarouselSlide.value = index;
+  showPendingCarousel.value = true;
+}
+
+function onPendingSlideChange(newSlide: string | number) {
+  pendingCarouselIndex.value = typeof newSlide === 'number' ? newSlide : parseInt(newSlide, 10);
+}
+
+function removePendingImageFromCarousel() {
+  const indexToRemove = pendingCarouselIndex.value;
+  pendingImages.value.splice(indexToRemove, 1);
+
+  if (pendingImages.value.length === 0) {
+    showPendingCarousel.value = false;
+  } else {
+    // Move to next or previous image
+    pendingCarouselIndex.value = Math.min(indexToRemove, pendingImages.value.length - 1);
+    pendingCarouselSlide.value = pendingCarouselIndex.value;
+  }
 }
 
 async function fetchRequests() {
@@ -1861,10 +2007,12 @@ async function viewRequest(request: PartsRequest) {
   documentsExpanded.value = false;
   photosExpanded.value = false;
   runnerPhotosExpanded.value = false;
+  notesExpanded.value = false;
   itemsCount.value = 0;
   documentsCount.value = 0;
   photosCount.value = 0;
   runnerPhotosCount.value = 0;
+  notesCount.value = 0;
 
   viewingRequest.value = await partsRequestsStore.fetchRequest(request.id);
   showViewDialog.value = true;
@@ -1889,6 +2037,11 @@ function onPhotosCountChanged(count: number) {
 function onRunnerPhotosCountChanged(count: number) {
   runnerPhotosCount.value = count;
   if (count > 0) runnerPhotosExpanded.value = true;
+}
+
+function onNotesCountChanged(count: number) {
+  notesCount.value = count;
+  if (count > 0) notesExpanded.value = true;
 }
 
 async function openDocuments(request: PartsRequest) {
@@ -1939,39 +2092,26 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-/* View Dialog Content - prevent horizontal overflow */
-.view-dialog-content {
-  width: 100%;
-  max-width: 100%;
-  overflow: hidden;
+/* Simple spacing for view dialog content children */
+.view-dialog-content > * {
+  margin-bottom: 16px;
 }
 
-.view-section {
-  width: 100%;
-  max-width: 100%;
-  overflow: hidden;
-  min-width: 0;
+.view-dialog-content > *:last-child {
+  margin-bottom: 0;
 }
 
-/* Ensure nested components don't overflow */
-.view-section :deep(.q-list) {
-  max-width: 100%;
-  overflow: hidden;
+/* Custom row classes using gap instead of negative margins (q-gutter uses negative margins) */
+.chip-row {
+  gap: 4px;
 }
 
-.view-section :deep(.q-item) {
-  max-width: 100%;
-  overflow: hidden;
+.from-to-row {
+  gap: 8px;
 }
 
-.view-section :deep(.q-item__section--main) {
-  min-width: 0;
-  overflow: hidden;
-}
-
-.view-section :deep(.q-item__label) {
-  word-break: break-word;
-  overflow-wrap: break-word;
+.info-row {
+  gap: 16px;
 }
 
 /* Pending images grid for create form */
@@ -1991,6 +2131,11 @@ onMounted(async () => {
   position: relative;
   border-radius: 4px;
   overflow: hidden;
+  cursor: pointer;
+}
+
+.pending-image-thumb:hover {
+  opacity: 0.9;
 }
 
 .pending-image-thumb .remove-image-btn {
@@ -1998,5 +2143,53 @@ onMounted(async () => {
   top: 4px;
   right: 4px;
   z-index: 1;
+}
+
+/* Pending images preview popup */
+.pending-preview-card {
+  width: 90vw;
+  max-width: 500px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.pending-carousel-container {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.pending-preview-carousel {
+  height: 300px;
+}
+
+@media (min-height: 600px) {
+  .pending-preview-carousel {
+    height: 350px;
+  }
+}
+
+@media (min-height: 800px) {
+  .pending-preview-carousel {
+    height: 450px;
+  }
+}
+
+.pending-carousel-image {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+:deep(.pending-preview-carousel .q-carousel__navigation) {
+  bottom: 8px;
+}
+
+:deep(.pending-preview-carousel .q-carousel__navigation-icon) {
+  font-size: 8px;
+}
+
+:deep(.pending-preview-carousel .q-carousel__arrow) {
+  font-size: 16px;
 }
 </style>

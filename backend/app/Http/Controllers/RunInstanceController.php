@@ -66,7 +66,7 @@ class RunInstanceController extends Controller
             ->forDate($date)
             ->with([
                 'route.stops.location',
-                'route.stops.vendorClusterLocations.vendorLocation',
+                'route.stops.vendorClusterLocations.vendor',
                 'schedule',
                 'requests' => function ($query) use ($date) {
                     $query->visibleToRunner()
@@ -95,7 +95,7 @@ class RunInstanceController extends Controller
     {
         $run = RunInstance::with([
             'route.stops.location',
-            'route.stops.vendorClusterLocations.vendorLocation',
+            'route.stops.vendorClusterLocations.vendor',
             'schedule',
             'assignedRunner',
             'assignedVehicle',

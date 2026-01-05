@@ -211,6 +211,14 @@ class PartsRequest extends Model
     }
 
     /**
+     * Notes attached to this request
+     */
+    public function notes(): HasMany
+    {
+        return $this->hasMany(PartsRequestNote::class)->orderBy('created_at', 'desc');
+    }
+
+    /**
      * Requester-uploaded info images
      */
     public function requesterImages(): HasMany

@@ -123,6 +123,11 @@ class ImageProcessingService
             return $metadata;
         }
 
+        // Check if EXIF extension is available
+        if (!function_exists('exif_read_data')) {
+            return $metadata;
+        }
+
         try {
             $exif = @exif_read_data($file->getPathname());
 

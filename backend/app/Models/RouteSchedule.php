@@ -143,7 +143,7 @@ class RouteSchedule extends Model
     /**
      * Check if this schedule runs on a specific date
      */
-    public function runsOnDate(Carbon $date): bool
+    public function runsOnDate(\Carbon\Carbon $date): bool
     {
         if (!$this->is_active) {
             return false;
