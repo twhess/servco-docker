@@ -182,38 +182,207 @@ class RouteGraphService
     /**
      * Find next available run instance for a route
      *
+     * Returns run info including Saturday detection for user prompts.
+     * If is_saturday is true, frontend should prompt user to choose Saturday or next business day.
+     *
      * @param int $routeId
      * @param Carbon $after Find runs after this time
      * @param Carbon|null $forDate Specific date (for forward scheduling)
-     * @return RunInstance|null
+     * @param int|null $pickupLocationId Location where pickup needs to happen (for passed-stop check)
+     * @param bool $skipClosedDates Whether to skip holidays/vacations
+     * @return array|null ['run' => RunInstance, 'is_saturday' => bool, 'date' => Carbon, 'schedule_id' => int]
      */
-    public function findNextAvailableRun(int $routeId, Carbon $after, ?Carbon $forDate = null): ?RunInstance
-    {
+    public function findNextAvailableRun(
+        int $routeId,
+        Carbon $after,
+        ?Carbon $forDate = null,
+        ?int $pickupLocationId = null,
+        bool $skipClosedDates = true
+    ): ?array {
         $route = Route::find($routeId);
         if (!$route || !$route->is_active) {
             return null;
         }
 
-        $targetDate = $forDate ?? $after->copy()->startOfDay();
+        $today = $forDate ?? $after->copy()->startOfDay();
 
-        // Get next scheduled time for this route (returns H:i string)
-        $nextTime = $route->getNextScheduledTime($after, $forDate);
-        if (!$nextTime) {
+        // Skip closed dates check for today
+        if ($skipClosedDates && \App\Models\ClosedDate::isDateClosed($today)) {
+            // Today is closed, skip to schedule-based lookup for next open day
+            return $this->findNextAvailableRunFromSchedule($route, $after, $forDate, $pickupLocationId, $skipClosedDates);
+        }
+
+        // STEP 1: Get all active schedules for today and check/create runs for each
+        $schedules = $route->schedules()
+            ->where('is_active', true)
+            ->get()
+            ->filter(fn($s) => $s->runsOnDate($today))
+            ->sortBy(fn($s) => $s->scheduled_time?->format('H:i') ?? '00:00');
+
+        foreach ($schedules as $schedule) {
+            $scheduleTime = $schedule->scheduled_time?->format('H:i');
+            if (!$scheduleTime) {
+                continue;
+            }
+
+            // Check if run instance already exists for this schedule today
+            $run = RunInstance::where('route_id', $routeId)
+                ->whereDate('scheduled_date', $today)
+                ->where('scheduled_time', $scheduleTime)
+                ->first();
+
+            if ($run) {
+                // Run exists - check if it's still available
+                if (!$run->isAvailableForAssignment()) {
+                    continue; // Completed/cancelled, try next schedule
+                }
+
+                if ($pickupLocationId && $run->hasPassedLocation($pickupLocationId)) {
+                    continue; // Already passed pickup point, try next schedule
+                }
+
+                // Found an available existing run
+                Log::debug("Found existing available run #{$run->id} for route #{$routeId} at {$scheduleTime}");
+
+                return [
+                    'run' => $run,
+                    'is_saturday' => $today->isSaturday(),
+                    'date' => $today,
+                    'time' => $scheduleTime,
+                    'schedule_id' => $schedule->id,
+                ];
+            } else {
+                // No run exists for this schedule - create one if it makes sense
+                // A schedule is valid for new runs if:
+                // - It's a future time today, OR
+                // - We're explicitly looking for today's runs (forDate is set)
+                $scheduleDateTime = $today->copy()->setTimeFromTimeString($scheduleTime);
+                $isFutureTime = $scheduleDateTime->gt($after);
+
+                // Always create the run for today's schedules - even if time has passed
+                // The run being "pending" means items can still be assigned to it
+                // (e.g., morning run at 8am, it's now 9am, but run hasn't departed yet)
+                Log::debug("Creating new run for route #{$routeId} at {$scheduleTime} on {$today->toDateString()}");
+
+                $run = RunInstance::create([
+                    'route_id' => $routeId,
+                    'scheduled_date' => $today->toDateString(),
+                    'scheduled_time' => $scheduleTime,
+                    'route_schedule_id' => $schedule->id,
+                    'status' => 'pending',
+                    'created_by' => auth()->id() ?? 1,
+                    'updated_by' => auth()->id() ?? 1,
+                ]);
+
+                return [
+                    'run' => $run,
+                    'is_saturday' => $today->isSaturday(),
+                    'date' => $today,
+                    'time' => $scheduleTime,
+                    'schedule_id' => $schedule->id,
+                ];
+            }
+        }
+
+        // No valid schedules for today, look for future runs
+        return $this->findNextAvailableRunFromSchedule($route, $after, $forDate, $pickupLocationId, $skipClosedDates);
+    }
+
+    /**
+     * Find next available run using schedule-based lookup (for future dates)
+     */
+    private function findNextAvailableRunFromSchedule(
+        Route $route,
+        Carbon $after,
+        ?Carbon $forDate,
+        ?int $pickupLocationId,
+        bool $skipClosedDates
+    ): ?array {
+        $scheduleResult = $route->getNextScheduledDateTime($after, $forDate, $skipClosedDates);
+        if (!$scheduleResult) {
             return null;
         }
 
-        // Check if run instance already exists
-        $run = RunInstance::where('route_id', $routeId)
+        $targetDate = $scheduleResult['date'];
+        $scheduledTime = $scheduleResult['time'];
+
+        // Check if run instance already exists for this date/time
+        $run = RunInstance::where('route_id', $route->id)
             ->whereDate('scheduled_date', $targetDate)
-            ->where('scheduled_time', $nextTime)
+            ->where('scheduled_time', $scheduledTime)
             ->first();
 
-        // Create if doesn't exist
-        if (!$run) {
-            $run = $route->createRunInstance($targetDate, $nextTime);
+        // If run exists, check if it's still available
+        if ($run) {
+            // Check if run has passed the pickup location
+            if ($pickupLocationId && $run->hasPassedLocation($pickupLocationId)) {
+                // This run has already passed our pickup point, find the next one
+                return $this->findNextAvailableRun(
+                    $route->id,
+                    $targetDate->copy()->setTimeFromTimeString($scheduledTime)->addMinute(),
+                    null,
+                    $pickupLocationId,
+                    $skipClosedDates
+                );
+            }
+
+            // Check if run is still accepting assignments
+            if (!$run->isAvailableForAssignment()) {
+                // Run is completed/cancelled, find the next one
+                return $this->findNextAvailableRun(
+                    $route->id,
+                    $targetDate->copy()->setTimeFromTimeString($scheduledTime)->addMinute(),
+                    null,
+                    $pickupLocationId,
+                    $skipClosedDates
+                );
+            }
+        } else {
+            // Create new run instance
+            $run = RunInstance::create([
+                'route_id' => $route->id,
+                'scheduled_date' => $targetDate->toDateString(),
+                'scheduled_time' => $scheduledTime,
+                'route_schedule_id' => $scheduleResult['schedule_id'] ?? null,
+                'status' => 'pending',
+                'created_by' => auth()->id() ?? 1,
+                'updated_by' => auth()->id() ?? 1,
+            ]);
         }
 
-        return $run;
+        return [
+            'run' => $run,
+            'is_saturday' => $scheduleResult['is_saturday'],
+            'date' => $targetDate,
+            'time' => $scheduledTime,
+            'schedule_id' => $scheduleResult['schedule_id'] ?? null,
+        ];
+    }
+
+    /**
+     * Find next available run, skipping Saturday if user declines
+     * This is called after user responds to Saturday prompt
+     *
+     * @param int $routeId
+     * @param Carbon $afterSaturday The Saturday date to skip
+     * @param int|null $pickupLocationId Location where pickup needs to happen
+     * @return array|null
+     */
+    public function findNextBusinessDayRun(
+        int $routeId,
+        Carbon $afterSaturday,
+        ?int $pickupLocationId = null
+    ): ?array {
+        // Start searching from the day after the Saturday
+        $nextDay = $afterSaturday->copy()->addDay()->startOfDay();
+
+        return $this->findNextAvailableRun(
+            $routeId,
+            $nextDay,
+            null,
+            $pickupLocationId,
+            true // Always skip closed dates
+        );
     }
 
     /**
@@ -255,19 +424,26 @@ class RouteGraphService
             ]);
 
             // Find appropriate run and stops for this segment
-            $nextRun = $this->findNextAvailableRun($routeId, now(), $request->scheduled_for_date);
-            if ($nextRun) {
-                $pickupStop = $nextRun->route->stops()
+            $runResult = $this->findNextAvailableRun(
+                $routeId,
+                now(),
+                $request->scheduled_for_date,
+                $fromLocation['location_id'] // Check against pickup location
+            );
+
+            if ($runResult && $runResult['run']) {
+                $run = $runResult['run'];
+                $pickupStop = $run->route->stops()
                     ->where('location_id', $fromLocation['location_id'])
                     ->first();
 
-                $dropoffStop = $nextRun->route->stops()
+                $dropoffStop = $run->route->stops()
                     ->where('location_id', $toLocation['location_id'])
                     ->first();
 
                 if ($pickupStop && $dropoffStop) {
                     $segment->update([
-                        'run_instance_id' => $nextRun->id,
+                        'run_instance_id' => $run->id,
                         'pickup_stop_id' => $pickupStop->id,
                         'dropoff_stop_id' => $dropoffStop->id,
                     ]);

@@ -33,5 +33,19 @@ export default defineRouter(function (/* { store, ssrContext } */) {
     history: createHistory(process.env.VUE_ROUTER_BASE),
   });
 
+  // Runner auth navigation guard
+  Router.beforeEach((to, _from, next) => {
+    // Check if route requires runner auth
+    if (to.meta.requiresRunnerAuth) {
+      const runnerToken = localStorage.getItem('runner_auth_token');
+      if (!runnerToken) {
+        // Redirect to runner login
+        next({ name: 'runner-login' });
+        return;
+      }
+    }
+    next();
+  });
+
   return Router;
 });

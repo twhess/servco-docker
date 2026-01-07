@@ -369,6 +369,36 @@
           <q-item
             clickable
             v-ripple
+            to="/emails"
+            active-class="bg-blue-1 text-blue-9"
+          >
+            <q-item-section avatar>
+              <q-icon name="email" />
+              <q-tooltip v-if="sidebarCollapsed" anchor="center right" self="center left">Emails</q-tooltip>
+            </q-item-section>
+            <q-item-section v-if="!sidebarCollapsed">
+              Emails
+            </q-item-section>
+          </q-item>
+
+          <q-item
+            clickable
+            v-ripple
+            to="/gemini"
+            active-class="bg-blue-1 text-blue-9"
+          >
+            <q-item-section avatar>
+              <q-icon name="auto_awesome" />
+              <q-tooltip v-if="sidebarCollapsed" anchor="center right" self="center left">AI Data Query</q-tooltip>
+            </q-item-section>
+            <q-item-section v-if="!sidebarCollapsed">
+              AI Data Query
+            </q-item-section>
+          </q-item>
+
+          <q-item
+            clickable
+            v-ripple
             to="/settings"
             active-class="bg-blue-1 text-blue-9"
           >

@@ -122,6 +122,24 @@ export const useRunsStore = defineStore('runs', {
       }
     },
 
+    async unassignRunner(runId: number) {
+      this.loading = true
+      this.error = null
+      try {
+        const response = await api.post(`/runs/${runId}/unassign`)
+        const updatedRun = response.data.data
+
+        this.updateRunInLists(updatedRun)
+        return updatedRun
+      } catch (error: any) {
+        console.error('unassignRunner error:', error.response?.data || error.message)
+        this.error = error.response?.data?.message || 'Failed to unassign runner'
+        throw error
+      } finally {
+        this.loading = false
+      }
+    },
+
     async startRun(runId: number) {
       this.loading = true
       this.error = null

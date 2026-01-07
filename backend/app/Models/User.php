@@ -55,6 +55,19 @@ class User extends Authenticatable
         'role',
         'home_location_id',
         'allowed_location_ids',
+        // Runner PIN authentication fields
+        'pin_hash',
+        'pin_enabled',
+        'pin_failed_attempts',
+        'pin_locked_until',
+        // Runner alert preferences
+        'alert_on_leave_with_open',
+        'alert_email_enabled',
+        'alert_slack_enabled',
+        'alert_popup_enabled',
+        'alert_sms_enabled',
+        'phone_e164',
+        'slack_member_id',
     ];
 
     /**
@@ -65,6 +78,7 @@ class User extends Authenticatable
     protected $hidden = [
         'password',
         'remember_token',
+        'pin_code',
     ];
 
     /**
@@ -79,6 +93,15 @@ class User extends Authenticatable
             'password' => 'hashed',
             'active' => 'boolean',
             'allowed_location_ids' => 'array',
+            // Runner fields
+            'pin_enabled' => 'boolean',
+            'pin_failed_attempts' => 'integer',
+            'pin_locked_until' => 'datetime',
+            'alert_on_leave_with_open' => 'boolean',
+            'alert_email_enabled' => 'boolean',
+            'alert_slack_enabled' => 'boolean',
+            'alert_popup_enabled' => 'boolean',
+            'alert_sms_enabled' => 'boolean',
         ];
     }
 
@@ -333,5 +356,138 @@ class User extends Authenticatable
         }
 
         return $abilities;
+    }
+
+    // ==========================================
+    // PIN Authentication Methods
+    // ==========================================
+
+    /**
+     * Set the PIN for this user.
+     * Uses the existing pin_code field.
+     */
+    public function setPin(string $pin): void
+    {
+        $this->pin_code = $pin;
+        $this->pin_enabled = true;
+        $this->pin_failed_attempts = 0;
+        $this->pin_locked_until = null;
+        $this->save();
+    }
+
+    /**
+     * Verify a PIN against the stored pin_code.
+     */
+    public function verifyPin(string $pin): bool
+    {
+        if (!$this->pin_code || !$this->pin_enabled) {
+            return false;
+        }
+
+        return $this->pin_code === $pin;
+    }
+
+    /**
+     * Check if the user's PIN is currently locked.
+     */
+    public function isPinLocked(): bool
+    {
+        if (!$this->pin_locked_until) {
+            return false;
+        }
+
+        return $this->pin_locked_until->isFuture();
+    }
+
+    /**
+     * Get remaining lockout time in seconds.
+     */
+    public function getPinLockoutSecondsRemaining(): int
+    {
+        if (!$this->isPinLocked()) {
+            return 0;
+        }
+
+        return (int) now()->diffInSeconds($this->pin_locked_until, false);
+    }
+
+    /**
+     * Increment failed PIN attempts and lock if threshold exceeded.
+     */
+    public function incrementFailedPinAttempts(): void
+    {
+        $this->pin_failed_attempts++;
+
+        // Lock after 5 failed attempts
+        if ($this->pin_failed_attempts >= 5) {
+            $this->pin_locked_until = now()->addMinutes(10);
+        }
+
+        $this->save();
+    }
+
+    /**
+     * Reset PIN failed attempts (called after successful login).
+     */
+    public function resetPinAttempts(): void
+    {
+        $this->pin_failed_attempts = 0;
+        $this->pin_locked_until = null;
+        $this->save();
+    }
+
+    /**
+     * Disable PIN authentication for this user.
+     */
+    public function disablePin(): void
+    {
+        $this->pin_code = null;
+        $this->pin_enabled = false;
+        $this->pin_failed_attempts = 0;
+        $this->pin_locked_until = null;
+        $this->save();
+    }
+
+    /**
+     * Check if user can use PIN authentication.
+     */
+    public function canUsePinAuth(): bool
+    {
+        return $this->pin_enabled && $this->pin_code && !$this->isPinLocked();
+    }
+
+    /**
+     * Find a user by their PIN code.
+     * Direct lookup since pin_code is stored in plaintext.
+     */
+    public static function findByPin(string $pin): ?self
+    {
+        return static::where('pin_enabled', true)
+            ->where('pin_code', $pin)
+            ->first();
+    }
+
+    /**
+     * Check if user is a runner (has runner_driver role).
+     */
+    public function isRunner(): bool
+    {
+        return $this->role === 'runner_driver' || $this->hasRole('runner_driver');
+    }
+
+    /**
+     * Get runner locations (GPS breadcrumbs).
+     */
+    public function runnerLocations()
+    {
+        return $this->hasMany(RunnerLocation::class);
+    }
+
+    /**
+     * Get assigned run instances.
+     */
+    public function assignedRuns()
+    {
+        return $this->hasMany(RunInstance::class, 'assigned_runner_user_id');
     }
 }

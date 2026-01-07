@@ -16,7 +16,19 @@ class RunInstanceController extends Controller
      */
     public function index(Request $request)
     {
-        $query = RunInstance::with(['route', 'schedule', 'assignedRunner', 'assignedVehicle', 'stopActuals.routeStop.location']);
+        $query = RunInstance::with([
+            'route',
+            'schedule',
+            'assignedRunner',
+            'assignedVehicle',
+            'stopActuals.routeStop.location',
+            'requests.status',
+            'requests.requestType',
+            'requests.urgency',
+            'requests.originLocation',
+            'requests.receivingLocation',
+            'requests.vendor',
+        ]);
 
         // Filter by date
         if ($request->has('date')) {
@@ -104,6 +116,7 @@ class RunInstanceController extends Controller
             'requests.urgency',
             'requests.originLocation',
             'requests.receivingLocation',
+            'requests.vendor',
             'requests.pickupStop',
             'requests.dropoffStop',
             'stopActuals.routeStop.location',
@@ -131,11 +144,19 @@ class RunInstanceController extends Controller
     }
 
     /**
-     * POST /runs/{id}/assign - Assign runner/vehicle
+     * POST /runs/{id}/assign - Assign or change runner/vehicle
+     * Can change runner on pending or in_progress runs
      */
     public function assign(Request $request, int $id)
     {
         $run = RunInstance::findOrFail($id);
+
+        // Can only assign/change runner on pending or in_progress runs
+        if (!in_array($run->status, ['pending', 'in_progress'])) {
+            return response()->json([
+                'message' => 'Cannot change runner on a completed or canceled run',
+            ], 400);
+        }
 
         $validated = $request->validate([
             'assigned_runner_user_id' => 'required|exists:users,id',
@@ -149,8 +170,43 @@ class RunInstanceController extends Controller
         Log::info("Run #{$run->id} assigned to runner #{$validated['assigned_runner_user_id']}");
 
         return response()->json([
-            'message' => 'Run assigned successfully',
+            'message' => 'Runner assigned successfully',
             'data' => $run->load(['assignedRunner', 'assignedVehicle']),
+        ]);
+    }
+
+    /**
+     * POST /runs/{id}/unassign - Unassign runner from run
+     * Only allowed on pending runs (use assign to change runner on started runs)
+     */
+    public function unassign(int $id)
+    {
+        $run = RunInstance::findOrFail($id);
+
+        // Can only unassign pending runs - started runs need a runner
+        if ($run->status !== 'pending') {
+            return response()->json([
+                'message' => 'Cannot unassign runner from a started run. Use "Change Runner" instead.',
+            ], 400);
+        }
+
+        $previousRunnerId = $run->assigned_runner_user_id;
+
+        $run->update([
+            'assigned_runner_user_id' => null,
+            'assigned_vehicle_location_id' => null,
+            'updated_by' => auth()->id(),
+        ]);
+
+        Log::info("Run #{$run->id} unassigned from runner #{$previousRunnerId}");
+
+        // Reload with relationships and append display_name
+        $run = $run->fresh(['route', 'schedule', 'assignedRunner', 'assignedVehicle']);
+        $run->append('display_name');
+
+        return response()->json([
+            'message' => 'Runner unassigned successfully',
+            'data' => $run,
         ]);
     }
 
@@ -406,6 +462,7 @@ class RunInstanceController extends Controller
 
     /**
      * POST /runs/{targetId}/merge/{sourceId} - Merge source run into target run
+     * Target can be pending or in_progress, source must be pending
      */
     public function merge(Request $request, int $targetId, int $sourceId)
     {
@@ -419,10 +476,17 @@ class RunInstanceController extends Controller
             ], 400);
         }
 
-        // Validate: source run must not be in progress or completed
-        if (in_array($sourceRun->status, ['in_progress', 'completed'])) {
+        // Validate: target run must be pending or in_progress
+        if (!in_array($targetRun->status, ['pending', 'in_progress'])) {
             return response()->json([
-                'message' => 'Cannot merge a run that is in progress or completed',
+                'message' => 'Cannot merge into a completed or canceled run',
+            ], 400);
+        }
+
+        // Validate: source run must be pending (can't merge from a started run)
+        if ($sourceRun->status !== 'pending') {
+            return response()->json([
+                'message' => 'Can only merge from a pending run (source run has already started)',
             ], 400);
         }
 

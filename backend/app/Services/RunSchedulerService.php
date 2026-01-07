@@ -43,14 +43,38 @@ class RunSchedulerService
     /**
      * Find next available run for a route after a given time
      *
+     * Returns array with run and scheduling info, or null if no run available.
+     * If is_saturday is true, frontend should prompt user to choose Saturday or next business day.
+     *
      * @param int $routeId
      * @param Carbon $after
      * @param Carbon|null $forDate Specific date for forward scheduling
+     * @param int|null $pickupLocationId Location for pickup (for passed-stop check)
+     * @return array|null ['run' => RunInstance, 'is_saturday' => bool, 'date' => Carbon, 'time' => string]
+     */
+    public function findNextAvailableRun(
+        int $routeId,
+        Carbon $after,
+        ?Carbon $forDate = null,
+        ?int $pickupLocationId = null
+    ): ?array {
+        return $this->routeGraphService->findNextAvailableRun($routeId, $after, $forDate, $pickupLocationId);
+    }
+
+    /**
+     * Find next available run, extracting just the RunInstance (legacy helper)
+     * Use findNextAvailableRun() for full scheduling info including Saturday detection
+     *
      * @return RunInstance|null
      */
-    public function findNextAvailableRun(int $routeId, Carbon $after, ?Carbon $forDate = null): ?RunInstance
-    {
-        return $this->routeGraphService->findNextAvailableRun($routeId, $after, $forDate);
+    public function findNextAvailableRunInstance(
+        int $routeId,
+        Carbon $after,
+        ?Carbon $forDate = null,
+        ?int $pickupLocationId = null
+    ): ?RunInstance {
+        $result = $this->findNextAvailableRun($routeId, $after, $forDate, $pickupLocationId);
+        return $result ? $result['run'] : null;
     }
 
     /**
@@ -193,12 +217,13 @@ class RunSchedulerService
         }
 
         // Find next available run
-        $run = $this->findNextAvailableRun($route->id, now(), $request->scheduled_for_date);
-        if (!$run) {
+        $runResult = $this->findNextAvailableRun($route->id, now(), $request->scheduled_for_date);
+        if (!$runResult || !$runResult['run']) {
             Log::warning("No available run found for route #{$route->id}");
             return false;
         }
 
+        $run = $runResult['run'];
         $this->assignRequestToRun($request, $run->id, $vendorStop->id, $destinationStop->id);
         Log::info("Vendor pickup request #{$request->id} assigned to run #{$run->id} on route #{$route->id}");
         return true;
@@ -210,14 +235,20 @@ class RunSchedulerService
     private function assignDirectRoute(PartsRequest $request, array $path): bool
     {
         $routeId = $path['routes'][0];
-        $targetDate = $request->scheduled_for_date ?? now();
 
-        // Find next available run
-        $run = $this->findNextAvailableRun($routeId, now(), $request->scheduled_for_date);
-        if (!$run) {
+        // Find next available run with pickup location check
+        $runResult = $this->findNextAvailableRun(
+            $routeId,
+            now(),
+            $request->scheduled_for_date,
+            $request->origin_location_id
+        );
+        if (!$runResult || !$runResult['run']) {
             Log::warning("No available run found for route #{$routeId}");
             return false;
         }
+
+        $run = $runResult['run'];
 
         // Find pickup and dropoff stops
         // For pickup: check if it matches a location or if vendor matches a vendor cluster
@@ -341,24 +372,52 @@ class RunSchedulerService
     /**
      * Reassign request to next available run on same route
      * Used when runner marks pickup as "Not Ready"
+     *
+     * @return array|bool Array with run info if Saturday prompt needed, true if assigned, false if no run
      */
-    public function reassignToNextRun(PartsRequest $request): bool
+    public function reassignToNextRun(PartsRequest $request): array|bool
     {
         $currentRun = $request->runInstance;
         if (!$currentRun) {
             return false;
         }
 
+        // Get pickup location ID from the pickup stop
+        $pickupLocationId = null;
+        if ($request->pickup_stop_id) {
+            $pickupStop = RouteStop::find($request->pickup_stop_id);
+            $pickupLocationId = $pickupStop?->location_id;
+        }
+
         // Find next run on same route
-        $nextRun = $this->findNextAvailableRun(
+        $runResult = $this->findNextAvailableRun(
             $currentRun->route_id,
             now(),
-            $request->scheduled_for_date
+            $request->scheduled_for_date,
+            $pickupLocationId
         );
 
-        if (!$nextRun || $nextRun->id === $currentRun->id) {
+        if (!$runResult || !$runResult['run']) {
             Log::warning("No next run available for request #{$request->id} on route #{$currentRun->route_id}");
             return false;
+        }
+
+        $nextRun = $runResult['run'];
+
+        if ($nextRun->id === $currentRun->id) {
+            Log::warning("Next available run is the same as current run for request #{$request->id}");
+            return false;
+        }
+
+        // If it's a Saturday, return the info for frontend to prompt user
+        if ($runResult['is_saturday']) {
+            return [
+                'saturday_prompt' => true,
+                'run' => $nextRun,
+                'date' => $runResult['date']->toDateString(),
+                'time' => $runResult['time'],
+                'route_id' => $currentRun->route_id,
+            ];
         }
 
         // Reassign to next run with same stops
@@ -369,6 +428,72 @@ class RunSchedulerService
             $request->dropoff_stop_id
         );
 
+        return true;
+    }
+
+    /**
+     * Reassign request to the next business day (skip Saturday)
+     * Called after user declines Saturday scheduling
+     */
+    public function reassignToNextBusinessDay(PartsRequest $request, Carbon $saturdayDate): bool
+    {
+        $currentRun = $request->runInstance;
+        $routeId = $currentRun ? $currentRun->route_id : null;
+
+        if (!$routeId) {
+            // Try to find route from path
+            $path = $this->routeGraphService->findPath(
+                $request->origin_location_id,
+                $request->receiving_location_id
+            );
+            if ($path && !empty($path['routes'])) {
+                $routeId = $path['routes'][0];
+            }
+        }
+
+        if (!$routeId) {
+            Log::warning("No route found for request #{$request->id} to reassign to next business day");
+            return false;
+        }
+
+        // Get pickup location ID
+        $pickupLocationId = null;
+        if ($request->pickup_stop_id) {
+            $pickupStop = RouteStop::find($request->pickup_stop_id);
+            $pickupLocationId = $pickupStop?->location_id;
+        }
+
+        // Find next run after Saturday
+        $runResult = $this->routeGraphService->findNextBusinessDayRun(
+            $routeId,
+            $saturdayDate,
+            $pickupLocationId
+        );
+
+        if (!$runResult || !$runResult['run']) {
+            Log::warning("No business day run available after {$saturdayDate->toDateString()} for request #{$request->id}");
+            return false;
+        }
+
+        $run = $runResult['run'];
+
+        // Find stops
+        $pickupStop = $run->route->stops()
+            ->where('location_id', $request->origin_location_id)
+            ->first();
+
+        $dropoffStop = $run->route->stops()
+            ->where('location_id', $request->receiving_location_id)
+            ->first();
+
+        if (!$pickupStop || !$dropoffStop) {
+            Log::warning("Could not find stops for request #{$request->id} on next business day run");
+            return false;
+        }
+
+        $this->assignRequestToRun($request, $run->id, $pickupStop->id, $dropoffStop->id);
+
+        Log::info("Request #{$request->id} reassigned to next business day run #{$run->id} on {$runResult['date']->toDateString()}");
         return true;
     }
 }

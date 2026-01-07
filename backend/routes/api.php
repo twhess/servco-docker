@@ -14,6 +14,13 @@ use App\Http\Controllers\VendorController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\CustomerImportController;
 use App\Http\Controllers\CustomerMergeController;
+use App\Http\Controllers\EmailController;
+use App\Http\Controllers\GeminiController;
+use App\Http\Controllers\Runner\RunnerAuthController;
+use App\Http\Controllers\Runner\RunnerRunsController;
+use App\Http\Controllers\Runner\RunnerItemsController;
+use App\Http\Controllers\Runner\RunnerLocationController;
+use App\Http\Controllers\Admin\RunnerPinController;
 
 Route::get('/health', function () {
     return response()->json(['ok' => true]);
@@ -162,6 +169,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/runs/create-on-demand', [RunInstanceController::class, 'createOnDemand']);
     Route::get('/runs/{id}', [RunInstanceController::class, 'show']);
     Route::post('/runs/{id}/assign', [RunInstanceController::class, 'assign']);
+    Route::post('/runs/{id}/unassign', [RunInstanceController::class, 'unassign']);
     Route::post('/runs/{id}/start', [RunInstanceController::class, 'start']);
     Route::post('/runs/{id}/complete', [RunInstanceController::class, 'complete']);
     Route::post('/runs/{id}/merge/{sourceId}', [RunInstanceController::class, 'merge']);
@@ -179,7 +187,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/parts-requests/{id}/actions/{action}', [PartsRequestController::class, 'executeAction']);
     Route::get('/parts-requests/{id}/available-actions', [PartsRequestController::class, 'availableActions']);
     Route::post('/parts-requests/{id}/assign-to-run', [PartsRequestController::class, 'assignToRun']);
+    Route::post('/parts-requests/{id}/assign-to-next-run', [PartsRequestController::class, 'assignToNextAvailableRun']);
     Route::post('/parts-requests/{id}/not-ready', [PartsRequestController::class, 'markNotReady']);
+    Route::post('/parts-requests/{id}/schedule-saturday-choice', [PartsRequestController::class, 'scheduleSaturdayChoice']);
     Route::get('/parts-requests/{id}/segments', [PartsRequestController::class, 'segments']);
     Route::get('/parts-requests/needs-staging', [PartsRequestController::class, 'needsStaging']);
     Route::get('/parts-requests/feed', [PartsRequestController::class, 'feed']);
@@ -208,6 +218,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/vendors', [VendorController::class, 'index']);
     Route::get('/vendors/search', [VendorController::class, 'search']);
     Route::post('/vendors/check-duplicate', [VendorController::class, 'checkDuplicate']);
+    Route::post('/vendors/detect-acronym', [VendorController::class, 'detectAcronym']);
     Route::post('/vendors', [VendorController::class, 'store']);
     Route::get('/vendors/{id}', [VendorController::class, 'show']);
     Route::put('/vendors/{id}', [VendorController::class, 'update']);
@@ -253,4 +264,96 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/customer-merges/{id}', [CustomerMergeController::class, 'show']);
     Route::post('/customer-merges/{id}/resolve', [CustomerMergeController::class, 'resolve']);
     Route::post('/customer-merges/batch-resolve', [CustomerMergeController::class, 'batchResolve']);
+
+    // ==========================================
+    // ADMIN - RUNNER PIN MANAGEMENT
+    // ==========================================
+    Route::prefix('admin/runners')->group(function () {
+        Route::get('/', [RunnerPinController::class, 'index']);
+        Route::post('{user}/pin', [RunnerPinController::class, 'setPin']);
+        Route::delete('{user}/pin', [RunnerPinController::class, 'disablePin']);
+        Route::post('{user}/unlock-pin', [RunnerPinController::class, 'unlockPin']);
+        Route::put('{user}/alerts', [RunnerPinController::class, 'updateAlertPreferences']);
+    });
+
+    // ==========================================
+    // EMAIL (GMAIL) INTEGRATION
+    // ==========================================
+
+    // Gmail API operations (live queries)
+    Route::get('/emails/sync-status', [EmailController::class, 'syncStatus']);
+    Route::get('/emails/labels', [EmailController::class, 'labels']);
+    Route::get('/emails/search', [EmailController::class, 'search']);
+    Route::get('/emails/with-attachments', [EmailController::class, 'withAttachments']);
+    Route::get('/emails/local', [EmailController::class, 'localIndex']);
+    Route::post('/emails/sync', [EmailController::class, 'sync']);
+    Route::get('/emails/{messageId}', [EmailController::class, 'show']);
+    Route::post('/emails/{messageId}/mark-read', [EmailController::class, 'markAsRead']);
+    Route::post('/emails/{messageId}/attachments/{attachmentId}/download-to-drive', [EmailController::class, 'downloadAttachmentToDrive']);
+    Route::post('/emails/{messageId}/download-all-attachments', [EmailController::class, 'downloadAllAttachments']);
+    Route::get('/emails', [EmailController::class, 'index']);
+
+    // Local email database operations
+    Route::get('/emails/local/{id}', [EmailController::class, 'localShow']);
+    Route::put('/emails/local/{id}/status', [EmailController::class, 'updateStatus']);
+
+    // ==========================================
+    // GEMINI AI + DRIVE INTEGRATION
+    // ==========================================
+    Route::get('/gemini/status', [GeminiController::class, 'status']);
+    Route::get('/gemini/folders', [GeminiController::class, 'listFolders']);
+    Route::get('/gemini/folders/search', [GeminiController::class, 'searchFolders']);
+    Route::get('/gemini/csv-files', [GeminiController::class, 'listCsvFiles']);
+    Route::get('/gemini/csv/{fileId}', [GeminiController::class, 'getCsvContent']);
+    Route::get('/gemini/csv/{fileId}/summary', [GeminiController::class, 'summarizeCsv']);
+    Route::post('/gemini/query-csv', [GeminiController::class, 'queryCsv']);
+    Route::post('/gemini/query-csv-fast', [GeminiController::class, 'queryCsvFast']);
+    Route::post('/gemini/filter-csv', [GeminiController::class, 'filterCsv']);
+    Route::post('/gemini/query-multiple-csv', [GeminiController::class, 'queryMultipleCsv']);
+    Route::get('/gemini/revenue-by-shop', [GeminiController::class, 'revenueByShop']);
+    Route::post('/gemini/chat', [GeminiController::class, 'chat']);
+});
+
+// ==========================================
+// RUNNER MOBILE INTERFACE ROUTES
+// ==========================================
+
+// Runner PIN Auth (public - no auth required)
+Route::prefix('runner/auth')->group(function () {
+    Route::post('pin', [RunnerAuthController::class, 'login']);
+});
+
+// Runner Protected Routes (requires Sanctum token with runner ability)
+Route::middleware(['auth:sanctum'])->prefix('runner')->group(function () {
+    // Auth
+    Route::post('auth/logout', [RunnerAuthController::class, 'logout']);
+    Route::get('auth/me', [RunnerAuthController::class, 'me']);
+
+    // Runs
+    Route::get('runs', [RunnerRunsController::class, 'index']);
+    Route::get('runs/{run}', [RunnerRunsController::class, 'show']);
+    Route::post('runs/{run}/claim', [RunnerRunsController::class, 'claim']);
+    Route::post('runs/{run}/start', [RunnerRunsController::class, 'start']);
+    Route::post('runs/{run}/complete', [RunnerRunsController::class, 'complete']);
+    Route::put('runs/{run}/current-stop', [RunnerRunsController::class, 'updateCurrentStop']);
+
+    // Vehicles
+    Route::get('vehicles', [RunnerRunsController::class, 'getVehicles']);
+    Route::get('vehicle/current', [RunnerRunsController::class, 'getCurrentVehicle']);
+    Route::post('vehicle/select', [RunnerRunsController::class, 'selectVehicle']);
+    Route::post('vehicle/end-session', [RunnerRunsController::class, 'endVehicleSession']);
+
+    // Items (Parts Requests)
+    Route::get('runs/{run}/items', [RunnerItemsController::class, 'index']);
+    Route::get('parts-requests/{partsRequest}', [RunnerItemsController::class, 'show']);
+    Route::post('parts-requests/{partsRequest}/status', [RunnerItemsController::class, 'updateStatus']);
+    Route::post('parts-requests/{partsRequest}/photos', [RunnerItemsController::class, 'uploadPhoto']);
+    Route::post('parts-requests/{partsRequest}/exception', [RunnerItemsController::class, 'markException']);
+    Route::post('parts-requests/{partsRequest}/notes', [RunnerItemsController::class, 'addNote']);
+
+    // Location & Geofencing
+    Route::post('location', [RunnerLocationController::class, 'store']);
+    Route::get('location/history', [RunnerLocationController::class, 'history']);
+    Route::post('location/geofence-status', [RunnerLocationController::class, 'geofenceStatus']);
+    Route::post('stops/{stop}/exit-check', [RunnerLocationController::class, 'exitCheck']);
 });

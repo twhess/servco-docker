@@ -475,6 +475,64 @@ export const usePartsRequestsStore = defineStore('partsRequests', {
       }
     },
 
+    /**
+     * Auto-assign request to next available run based on origin/destination
+     * May return saturday_prompt: true if next run is Saturday
+     */
+    async assignToNextAvailableRun(requestId: number): Promise<{
+      success?: boolean;
+      saturdayPrompt?: boolean;
+      saturdayDate?: string;
+      saturdayTime?: string;
+      routeId?: number;
+      needsManualAssignment?: boolean;
+      data?: PartsRequest;
+    }> {
+      this.loading = true;
+      try {
+        const response = await api.post(`/parts-requests/${requestId}/assign-to-next-run`);
+
+        // Check for Saturday prompt
+        if (response.data.saturday_prompt) {
+          return {
+            saturdayPrompt: true,
+            saturdayDate: response.data.saturday_date,
+            saturdayTime: response.data.saturday_time,
+            routeId: response.data.route_id,
+            data: response.data.data,
+          };
+        }
+
+        Notify.create({
+          type: 'positive',
+          message: response.data.message || 'Assigned to next available run',
+        });
+
+        if (this.currentRequest?.id === requestId) {
+          this.currentRequest = response.data.data;
+        }
+
+        return { success: true, data: response.data.data };
+      } catch (error: any) {
+        // Check for needs_manual_assignment
+        if (error.response?.data?.needs_manual_assignment) {
+          Notify.create({
+            type: 'warning',
+            message: error.response.data.message || 'No route found. Manual assignment required.',
+          });
+          return { needsManualAssignment: true };
+        }
+
+        Notify.create({
+          type: 'negative',
+          message: error.response?.data?.message || 'Failed to assign to next run',
+        });
+        throw error;
+      } finally {
+        this.loading = false;
+      }
+    },
+
     async fetchSegments(requestId: number) {
       try {
         const response = await api.get(`/parts-requests/${requestId}/segments`);
@@ -578,6 +636,100 @@ export const usePartsRequestsStore = defineStore('partsRequests', {
         Notify.create({
           type: 'negative',
           message: error.response?.data?.message || 'Failed to schedule requests',
+        });
+        throw error;
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    /**
+     * Mark a pickup as not ready - moves to next available run
+     * May return saturday_prompt: true if next run is Saturday
+     */
+    async markNotReady(requestId: number, reason?: string) {
+      this.loading = true;
+      try {
+        const response = await api.post(`/parts-requests/${requestId}/not-ready`, {
+          reason,
+        });
+
+        // Check for Saturday prompt
+        if (response.data.saturday_prompt) {
+          return {
+            saturdayPrompt: true,
+            saturdayDate: response.data.saturday_date,
+            saturdayTime: response.data.saturday_time,
+            routeId: response.data.route_id,
+            data: response.data.data,
+          };
+        }
+
+        // Check for needs manual assignment
+        if (response.data.needs_manual_assignment) {
+          Notify.create({
+            type: 'warning',
+            message: response.data.message || 'Marked not ready but requires manual assignment',
+          });
+          return {
+            needsManualAssignment: true,
+            data: response.data.data,
+          };
+        }
+
+        Notify.create({
+          type: 'positive',
+          message: response.data.message || 'Moved to next run',
+        });
+
+        if (this.currentRequest?.id === requestId) {
+          this.currentRequest = response.data.data;
+        }
+        return { success: true, data: response.data.data };
+      } catch (error: any) {
+        Notify.create({
+          type: 'negative',
+          message: error.response?.data?.message || 'Failed to mark as not ready',
+        });
+        throw error;
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    /**
+     * Submit Saturday choice after markNotReady returns saturday_prompt
+     */
+    async submitSaturdayChoice(requestId: number, useSaturday: boolean, saturdayDate: string) {
+      this.loading = true;
+      try {
+        const response = await api.post(`/parts-requests/${requestId}/schedule-saturday-choice`, {
+          use_saturday: useSaturday,
+          saturday_date: saturdayDate,
+        });
+
+        // Check for needs manual assignment
+        if (response.data.needs_manual_assignment) {
+          Notify.create({
+            type: 'warning',
+            message: response.data.message || 'Requires manual assignment',
+          });
+          return { needsManualAssignment: true };
+        }
+
+        Notify.create({
+          type: 'positive',
+          message: response.data.message || (useSaturday ? 'Scheduled for Saturday' : 'Scheduled for next business day'),
+        });
+
+        if (this.currentRequest?.id === requestId) {
+          this.currentRequest = response.data.data;
+        }
+        return { success: true, data: response.data.data };
+      } catch (error: any) {
+        Notify.create({
+          type: 'negative',
+          message: error.response?.data?.message || 'Failed to schedule request',
         });
         throw error;
       } finally {

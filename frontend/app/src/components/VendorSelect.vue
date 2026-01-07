@@ -99,6 +99,34 @@
           <div class="text-h6">Add New Vendor</div>
         </q-card-section>
 
+        <!-- Acronym Detection -->
+        <q-card-section v-if="showAcronymPrompt" class="q-pt-none">
+          <q-banner class="bg-blue-1" rounded>
+            <template v-slot:avatar>
+              <q-icon name="info" color="primary" />
+            </template>
+            <div class="text-body2">
+              This looks like an acronym. Save as <strong>{{ acronymSuggestion }}</strong> (all caps)?
+            </div>
+            <template v-slot:action>
+              <q-btn
+                flat
+                dense
+                label="Use ALL CAPS"
+                color="primary"
+                @click="acceptAcronymSuggestion"
+              />
+              <q-btn
+                flat
+                dense
+                label="Keep as typed"
+                color="grey"
+                @click="rejectAcronymSuggestion"
+              />
+            </template>
+          </q-banner>
+        </q-card-section>
+
         <!-- Duplicate Warning -->
         <q-card-section v-if="duplicateCandidates.length > 0" class="q-pt-none">
           <q-banner class="bg-warning text-dark">
@@ -136,6 +164,8 @@
               label="Vendor Name *"
               filled
               :rules="[(v: string) => !!v || 'Name is required']"
+              @update:model-value="checkForAcronym"
+              @blur="checkForAcronym"
             />
             <q-input
               v-model="newVendor.phone"
@@ -181,6 +211,7 @@
 import { ref, computed, watch } from 'vue';
 import { useVendorsStore } from 'src/stores/vendors';
 import type { Vendor, VendorDuplicateCandidate, VendorSearchResult } from 'src/types/vendors';
+import { detectAcronym } from 'src/composables/useAcronymDetector';
 
 interface SelectOption {
   id: number;
@@ -236,6 +267,11 @@ const newVendor = ref({
   email: '',
 });
 
+// Acronym detection state
+const showAcronymPrompt = ref(false);
+const acronymSuggestion = ref('');
+const isAcronymConfirmed = ref<boolean | null>(null);
+
 const showAddNewOption = computed(() => {
   return props.allowCreate && inputValue.value.length >= 2;
 });
@@ -288,12 +324,16 @@ const filterVendors = async (
   const results = await vendorsStore.searchVendors(val);
 
   update(() => {
-    selectOptions.value = results.map(v => ({
-      id: v.id,
-      name: v.name,
-      phone: v.phone,
-      primaryAddress: v.addresses?.[0]?.one_line_address,
-    }));
+    selectOptions.value = results.map(v => {
+      const option: SelectOption = {
+        id: v.id,
+        name: v.name,
+      };
+      if (v.phone !== undefined) option.phone = v.phone;
+      const addr = v.addresses?.[0]?.one_line_address;
+      if (addr) option.primaryAddress = addr;
+      return option;
+    });
   });
 };
 
@@ -333,17 +373,66 @@ const openCreateDialog = () => {
     email: '',
   };
   duplicateCandidates.value = [];
+  // Reset acronym state
+  showAcronymPrompt.value = false;
+  acronymSuggestion.value = '';
+  isAcronymConfirmed.value = null;
   showCreateDialog.value = true;
 
   // Close the select dropdown
   selectRef.value?.hidePopup();
+
+  // Check for acronym on the initial value
+  if (inputValue.value) {
+    checkForAcronym();
+  }
 };
 
 const closeCreateDialog = () => {
   showCreateDialog.value = false;
   duplicateCandidates.value = [];
   newVendor.value = { name: '', phone: '', email: '' };
+  // Reset acronym state
+  showAcronymPrompt.value = false;
+  acronymSuggestion.value = '';
+  isAcronymConfirmed.value = null;
 };
+
+// Acronym detection functions
+function checkForAcronym() {
+  // Don't show prompt if user already made a decision
+  if (isAcronymConfirmed.value !== null) {
+    return;
+  }
+
+  const name = newVendor.value.name.trim();
+  if (name.length < 2) {
+    showAcronymPrompt.value = false;
+    acronymSuggestion.value = '';
+    return;
+  }
+
+  const result = detectAcronym(name);
+  if (result.isLikely) {
+    acronymSuggestion.value = result.suggestedName;
+    // Only show prompt if the suggestion is different from what they typed
+    showAcronymPrompt.value = name !== result.suggestedName;
+  } else {
+    showAcronymPrompt.value = false;
+    acronymSuggestion.value = '';
+  }
+}
+
+function acceptAcronymSuggestion() {
+  newVendor.value.name = acronymSuggestion.value;
+  isAcronymConfirmed.value = true;
+  showAcronymPrompt.value = false;
+}
+
+function rejectAcronymSuggestion() {
+  isAcronymConfirmed.value = false;
+  showAcronymPrompt.value = false;
+}
 
 const submitCreateVendor = async () => {
   if (!newVendor.value.name) return;
@@ -352,8 +441,10 @@ const submitCreateVendor = async () => {
   try {
     const result = await vendorsStore.createVendor({
       name: newVendor.value.name,
-      phone: newVendor.value.phone || undefined,
-      email: newVendor.value.email || undefined,
+      phone: newVendor.value.phone || null,
+      email: newVendor.value.email || null,
+      // Pass is_acronym if user explicitly confirmed (true) or rejected (false)
+      ...(isAcronymConfirmed.value !== null ? { is_acronym: isAcronymConfirmed.value } : {}),
       force_create: false,
     });
 
@@ -381,8 +472,10 @@ const forceCreateVendor = async () => {
   try {
     const result = await vendorsStore.createVendor({
       name: newVendor.value.name,
-      phone: newVendor.value.phone || undefined,
-      email: newVendor.value.email || undefined,
+      phone: newVendor.value.phone || null,
+      email: newVendor.value.email || null,
+      // Pass is_acronym if user explicitly confirmed (true) or rejected (false)
+      ...(isAcronymConfirmed.value !== null ? { is_acronym: isAcronymConfirmed.value } : {}),
       force_create: true,
     });
 

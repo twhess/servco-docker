@@ -16,7 +16,9 @@ use App\Services\GeofenceService;
 use App\Services\SlackNotificationService;
 use App\Services\RequestWorkflowService;
 use App\Services\RunSchedulerService;
+use App\Services\RouteGraphService;
 use App\Services\InventoryIntegrationService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -29,19 +31,22 @@ class PartsRequestController extends Controller
     protected $workflowService;
     protected $schedulerService;
     protected $inventoryService;
+    protected $routeGraphService;
 
     public function __construct(
         GeofenceService $geofenceService,
         SlackNotificationService $slackService,
         RequestWorkflowService $workflowService,
         RunSchedulerService $schedulerService,
-        InventoryIntegrationService $inventoryService
+        InventoryIntegrationService $inventoryService,
+        RouteGraphService $routeGraphService
     ) {
         $this->geofenceService = $geofenceService;
         $this->slackService = $slackService;
         $this->workflowService = $workflowService;
         $this->schedulerService = $schedulerService;
         $this->inventoryService = $inventoryService;
+        $this->routeGraphService = $routeGraphService;
     }
 
     /**
@@ -1745,6 +1750,8 @@ class PartsRequestController extends Controller
     /**
      * POST /parts-requests/{id}/not-ready - Runner marks pickup as not ready
      * Moves the request to the next available run on the same route
+     *
+     * If next run is Saturday, returns saturday_prompt: true for frontend to confirm
      */
     public function markNotReady(Request $request, int $id)
     {
@@ -1774,6 +1781,18 @@ class PartsRequestController extends Controller
 
             DB::commit();
 
+            // Check if this is a Saturday prompt (reassigned returns array)
+            if (is_array($reassigned) && !empty($reassigned['saturday_prompt'])) {
+                return response()->json([
+                    'message' => 'Next available run is on Saturday',
+                    'saturday_prompt' => true,
+                    'saturday_date' => $reassigned['date'],
+                    'saturday_time' => $reassigned['time'],
+                    'route_id' => $reassigned['route_id'],
+                    'data' => $partsRequest->fresh(['status', 'runInstance']),
+                ]);
+            }
+
             if (!$reassigned) {
                 return response()->json([
                     'message' => 'Marked not ready but no next run available',
@@ -1790,6 +1809,199 @@ class PartsRequestController extends Controller
             DB::rollBack();
             return response()->json([
                 'message' => 'Failed to mark as not ready',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * POST /parts-requests/{id}/schedule-saturday-choice - User chooses Saturday or next business day
+     * Called after frontend shows Saturday confirmation dialog
+     */
+    public function scheduleSaturdayChoice(Request $request, int $id)
+    {
+        $partsRequest = PartsRequest::findOrFail($id);
+
+        Gate::authorize('update', $partsRequest);
+
+        $validated = $request->validate([
+            'use_saturday' => 'required|boolean',
+            'saturday_date' => 'required|date',
+        ]);
+
+        $saturdayDate = Carbon::parse($validated['saturday_date']);
+
+        DB::beginTransaction();
+        try {
+            if ($validated['use_saturday']) {
+                // User chose Saturday - find the Saturday run and assign
+                $runResult = $this->schedulerService->findNextAvailableRun(
+                    $partsRequest->runInstance?->route_id ?? $this->findRouteForRequest($partsRequest),
+                    $saturdayDate->copy()->startOfDay(),
+                    $saturdayDate,
+                    $partsRequest->origin_location_id
+                );
+
+                if (!$runResult || !$runResult['run']) {
+                    DB::rollBack();
+                    return response()->json([
+                        'message' => 'Saturday run no longer available',
+                        'needs_manual_assignment' => true,
+                    ], 400);
+                }
+
+                $run = $runResult['run'];
+
+                // Find stops
+                $pickupStop = $run->route->stops()
+                    ->where('location_id', $partsRequest->origin_location_id)
+                    ->first();
+
+                $dropoffStop = $run->route->stops()
+                    ->where('location_id', $partsRequest->receiving_location_id)
+                    ->first();
+
+                if (!$pickupStop || !$dropoffStop) {
+                    DB::rollBack();
+                    return response()->json([
+                        'message' => 'Could not find appropriate stops on Saturday run',
+                        'needs_manual_assignment' => true,
+                    ], 400);
+                }
+
+                $this->schedulerService->assignRequestToRun(
+                    $partsRequest,
+                    $run->id,
+                    $pickupStop->id,
+                    $dropoffStop->id
+                );
+
+                // Create event
+                $partsRequest->events()->create([
+                    'event_type' => 'assigned',
+                    'notes' => "Scheduled for Saturday ({$saturdayDate->toDateString()}) by user choice",
+                    'event_at' => now(),
+                    'user_id' => $request->user()->id,
+                ]);
+            } else {
+                // User declined Saturday - find next business day
+                $success = $this->schedulerService->reassignToNextBusinessDay($partsRequest, $saturdayDate);
+
+                if (!$success) {
+                    DB::rollBack();
+                    return response()->json([
+                        'message' => 'No run available for next business day',
+                        'needs_manual_assignment' => true,
+                    ], 400);
+                }
+
+                // Create event
+                $partsRequest->events()->create([
+                    'event_type' => 'assigned',
+                    'notes' => "Scheduled for next business day (skipped Saturday {$saturdayDate->toDateString()})",
+                    'event_at' => now(),
+                    'user_id' => $request->user()->id,
+                ]);
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'message' => $validated['use_saturday'] ? 'Scheduled for Saturday' : 'Scheduled for next business day',
+                'data' => $partsRequest->fresh(['status', 'runInstance.route', 'pickupStop', 'dropoffStop']),
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'message' => 'Failed to schedule request',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Helper to find a route for a request (when not yet assigned)
+     */
+    private function findRouteForRequest(PartsRequest $request): ?int
+    {
+        $path = $this->routeGraphService->findPath(
+            $request->origin_location_id,
+            $request->receiving_location_id
+        );
+
+        if ($path && !empty($path['routes'])) {
+            return $path['routes'][0];
+        }
+
+        return null;
+    }
+
+    /**
+     * POST /parts-requests/{id}/assign-to-next-run - Auto-assign to next available run
+     *
+     * Finds the appropriate route based on request type:
+     * - Vendor pickups/returns: Route serving vendor and destination
+     * - Transfers: Route connecting origin to destination
+     *
+     * Returns saturday_prompt: true if next run is Saturday
+     */
+    public function assignToNextAvailableRun(Request $request, int $id)
+    {
+        $partsRequest = PartsRequest::findOrFail($id);
+
+        Gate::authorize('assign', $partsRequest);
+
+        // Can't assign if already assigned
+        if ($partsRequest->run_instance_id) {
+            return response()->json([
+                'message' => 'Request is already assigned to a run',
+                'data' => $partsRequest->load(['runInstance.route', 'pickupStop', 'dropoffStop']),
+            ], 400);
+        }
+
+        DB::beginTransaction();
+        try {
+            // Use the auto-assignment logic
+            $result = $this->schedulerService->autoAssignRequest($partsRequest);
+
+            if ($result === false) {
+                // No route found - need manual assignment
+                DB::rollBack();
+                return response()->json([
+                    'message' => 'No route found for this request. Manual assignment required.',
+                    'needs_manual_assignment' => true,
+                ], 400);
+            }
+
+            // Check if it returned a Saturday prompt (array)
+            if (is_array($result) && !empty($result['saturday_prompt'])) {
+                DB::commit();
+                return response()->json([
+                    'message' => 'Next available run is on Saturday',
+                    'saturday_prompt' => true,
+                    'saturday_date' => $result['date'],
+                    'saturday_time' => $result['time'] ?? null,
+                    'route_id' => $result['route_id'] ?? null,
+                    'data' => $partsRequest->fresh(['status', 'runInstance.route']),
+                ]);
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'message' => 'Request assigned to next available run',
+                'data' => $partsRequest->fresh([
+                    'status',
+                    'runInstance.route',
+                    'runInstance.assignedRunner',
+                    'pickupStop',
+                    'dropoffStop',
+                ]),
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'message' => 'Failed to assign to next run',
                 'error' => $e->getMessage(),
             ], 500);
         }

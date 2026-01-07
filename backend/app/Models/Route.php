@@ -152,9 +152,14 @@ class Route extends Model
 
     /**
      * Get next scheduled time after a given time
-     * Returns the time in H:i format, or null if no schedule available
+     * Returns array with 'date' and 'time', or null if no schedule available
+     *
+     * @param \Carbon\Carbon $after
+     * @param \Carbon\Carbon|null $forDate Specific date for forward scheduling
+     * @param bool $skipClosedDates Whether to skip closed dates (holidays/vacations)
+     * @return array|null ['date' => Carbon, 'time' => string, 'is_saturday' => bool]
      */
-    public function getNextScheduledTime(\Carbon\Carbon $after, ?\Carbon\Carbon $forDate = null): ?string
+    public function getNextScheduledDateTime(\Carbon\Carbon $after, ?\Carbon\Carbon $forDate = null, bool $skipClosedDates = true): ?array
     {
         $schedules = $this->schedules()->where('is_active', true)->get();
 
@@ -165,15 +170,19 @@ class Route extends Model
         $targetDate = $forDate ?? $after->copy()->startOfDay();
         $currentTime = $after->format('H:i');
 
-        // If we have a specific date, check if schedules run on that day
-        // Otherwise use today first, then check next available day
-        $maxDaysToCheck = 7;
+        // Check up to 14 days (2 weeks) to account for holiday periods
+        $maxDaysToCheck = 14;
 
         for ($dayOffset = 0; $dayOffset < $maxDaysToCheck; $dayOffset++) {
             $checkDate = $targetDate->copy()->addDays($dayOffset);
 
+            // Skip closed dates (holidays, vacations) if enabled
+            if ($skipClosedDates && ClosedDate::isDateClosed($checkDate)) {
+                continue;
+            }
+
             foreach ($schedules->sortBy(fn($s) => $s->scheduled_time?->format('H:i') ?? '00:00') as $schedule) {
-                // Check if schedule runs on this day
+                // Check if schedule runs on this day of week
                 if (!$schedule->runsOnDate($checkDate)) {
                     continue;
                 }
@@ -193,11 +202,26 @@ class Route extends Model
                 }
 
                 // Found a valid schedule
-                return $scheduleTime;
+                return [
+                    'date' => $checkDate,
+                    'time' => $scheduleTime,
+                    'is_saturday' => $checkDate->isSaturday(),
+                    'schedule_id' => $schedule->id,
+                ];
             }
         }
 
         return null;
+    }
+
+    /**
+     * Get next scheduled time after a given time (legacy method for backward compatibility)
+     * Returns the time in H:i format, or null if no schedule available
+     */
+    public function getNextScheduledTime(\Carbon\Carbon $after, ?\Carbon\Carbon $forDate = null): ?string
+    {
+        $result = $this->getNextScheduledDateTime($after, $forDate);
+        return $result ? $result['time'] : null;
     }
 
     /**

@@ -618,7 +618,14 @@ async function onReorder() {
     id: stop.id,
     order: index + 1,
   }))
-  await routesStore.reorderStops(props.routeId, stopsOrder)
+  console.log('Reordering stops:', stopsOrder)
+  try {
+    await routesStore.reorderStops(props.routeId, stopsOrder)
+    console.log('Reorder successful')
+    await refreshStops()
+  } catch (error) {
+    console.error('Reorder failed:', error)
+  }
 }
 
 async function refreshStops() {

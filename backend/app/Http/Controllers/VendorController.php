@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Address;
 use App\Models\Vendor;
 use App\Services\VendorService;
 use Illuminate\Http\Request;
@@ -80,7 +79,22 @@ class VendorController extends Controller
     }
 
     /**
-     * Create new vendor with duplicate check.
+     * Detect if a name is likely an acronym.
+     * Returns detection result with suggested formatting.
+     */
+    public function detectAcronym(Request $request)
+    {
+        $request->validate([
+            'name' => 'required|string|max:255',
+        ]);
+
+        $result = $this->vendorService->detectAcronym($request->name);
+
+        return response()->json($result);
+    }
+
+    /**
+     * Create new vendor with duplicate check and acronym handling.
      */
     public function store(Request $request)
     {
@@ -91,6 +105,7 @@ class VendorController extends Controller
             'email' => 'nullable|email|max:255',
             'notes' => 'nullable|string',
             'status' => 'nullable|in:active,inactive',
+            'is_acronym' => 'nullable|boolean',
             'force_create' => 'boolean',
         ]);
 
@@ -132,7 +147,14 @@ class VendorController extends Controller
             'email' => 'nullable|email|max:255',
             'notes' => 'nullable|string',
             'status' => 'nullable|in:active,inactive',
+            'is_acronym' => 'nullable|boolean',
         ]);
+
+        // If is_acronym is being set to true, format the name as uppercase
+        if (isset($validated['is_acronym']) && $validated['is_acronym'] && isset($validated['name'])) {
+            $acronymDetector = app(\App\Services\AcronymDetector::class);
+            $validated['name'] = $acronymDetector->formatName($validated['name'], true);
+        }
 
         $vendor->update($validated);
 

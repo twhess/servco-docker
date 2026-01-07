@@ -106,11 +106,13 @@
           row-key="id"
           :loading="loading"
           :pagination="pagination"
+          class="clickable-rows"
           @request="onTableRequest"
+          @row-click="onRowClick"
         >
           <template v-slot:body-cell-reference_number="props">
             <q-td :props="props">
-              <div class="text-weight-medium text-primary cursor-pointer" @click="viewRequest(props.row)">
+              <div class="text-weight-medium text-primary">
                 {{ props.row.reference_number }}
               </div>
               <div class="text-caption text-grey-7">
@@ -216,67 +218,6 @@
             </q-td>
           </template>
 
-          <template v-slot:body-cell-actions="props">
-            <q-td :props="props">
-              <q-btn flat dense round icon="more_vert">
-                <q-menu>
-                  <q-list style="min-width: 150px">
-                    <q-item clickable v-close-popup @click="viewRequest(props.row)">
-                      <q-item-section avatar>
-                        <q-icon name="visibility" />
-                      </q-item-section>
-                      <q-item-section>View Details</q-item-section>
-                    </q-item>
-
-                    <q-item
-                      v-if="can('parts_requests.assign') && !props.row.assigned_runner"
-                      clickable
-                      v-close-popup
-                      @click="openAssignDialog(props.row)"
-                    >
-                      <q-item-section avatar>
-                        <q-icon name="person_add" />
-                      </q-item-section>
-                      <q-item-section>Assign Runner</q-item-section>
-                    </q-item>
-
-                    <q-item
-                      v-if="can('parts_requests.assign') && props.row.assigned_runner"
-                      clickable
-                      v-close-popup
-                      @click="unassignRunner(props.row)"
-                    >
-                      <q-item-section avatar>
-                        <q-icon name="person_remove" />
-                      </q-item-section>
-                      <q-item-section>Unassign Runner</q-item-section>
-                    </q-item>
-
-                    <q-item clickable v-close-popup @click="viewTimeline(props.row)">
-                      <q-item-section avatar>
-                        <q-icon name="timeline" />
-                      </q-item-section>
-                      <q-item-section>View Timeline</q-item-section>
-                    </q-item>
-
-                    <q-item clickable v-close-popup @click="viewPhotos(props.row)">
-                      <q-item-section avatar>
-                        <q-icon name="photo_library" />
-                      </q-item-section>
-                      <q-item-section>View Photos</q-item-section>
-                    </q-item>
-
-                    <q-item clickable v-close-popup @click="openDocuments(props.row)">
-                      <q-item-section avatar>
-                        <q-icon name="attach_file" />
-                      </q-item-section>
-                      <q-item-section>Attach Document</q-item-section>
-                    </q-item>
-                  </q-list>
-                </q-menu>
-              </q-btn>
-            </q-td>
-          </template>
         </q-table>
       </q-card>
     </div>
@@ -1027,7 +968,20 @@
           <div>
             <q-btn flat dense size="sm" icon="timeline" @click="viewTimeline(viewingRequest!)" />
           </div>
-          <q-btn flat dense size="sm" label="Close" color="primary" v-close-popup />
+          <div class="row items-center q-gutter-sm">
+            <q-btn
+              v-if="viewingRequest && !viewingRequest.run_instance_id"
+              flat
+              dense
+              size="sm"
+              label="Add to Next Run"
+              icon="add_road"
+              color="primary"
+              :loading="assigningToNextRun"
+              @click="assignToNextRun(viewingRequest!)"
+            />
+            <q-btn flat dense size="sm" label="Close" color="primary" v-close-popup />
+          </div>
         </q-card-actions>
       </q-card>
     </q-dialog>
@@ -1163,6 +1117,36 @@
         </q-card-section>
       </q-card>
     </q-dialog>
+
+    <!-- Saturday Prompt Dialog -->
+    <q-dialog v-model="showSaturdayPromptDialog" persistent>
+      <q-card style="min-width: 300px; max-width: 400px;">
+        <q-card-section class="row items-center">
+          <q-icon name="event" color="warning" size="md" class="q-mr-sm" />
+          <div class="text-h6">Saturday Run</div>
+        </q-card-section>
+
+        <q-card-section>
+          <p>The next available run is on <strong>Saturday, {{ saturdayPromptData?.saturdayDate }}</strong>.</p>
+          <p class="text-grey-7">Would you like to assign to this Saturday run, or wait for the next business day?</p>
+        </q-card-section>
+
+        <q-card-actions align="right">
+          <q-btn
+            flat
+            label="Wait for Weekday"
+            color="grey"
+            @click="handleSaturdayChoice(false)"
+          />
+          <q-btn
+            flat
+            label="Use Saturday"
+            color="primary"
+            @click="handleSaturdayChoice(true)"
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
   </q-page>
 </template>
 
@@ -1205,6 +1189,16 @@ const showAssignDialog = ref(false);
 const showViewDialog = ref(false);
 const showTimelineDialog = ref(false);
 const showPhotosDialog = ref(false);
+const showSaturdayPromptDialog = ref(false);
+
+// "Add to Next Run" state
+const assigningToNextRun = ref(false);
+const saturdayPromptData = ref<{
+  requestId: number;
+  saturdayDate: string;
+  saturdayTime?: string;
+  routeId?: number;
+} | null>(null);
 
 const selectedRequest = ref<PartsRequest | null>(null);
 const selectedRunnerId = ref<number | null>(null);
@@ -1600,7 +1594,6 @@ const columns = [
   { name: 'status', label: 'Status', field: 'status', align: 'center' as const },
   { name: 'assigned_run', label: 'Assigned Run', field: 'run_instance', align: 'left' as const },
   { name: 'requested_by', label: 'Requested By', field: 'requested_by', align: 'left' as const },
-  { name: 'actions', label: '', field: 'actions', align: 'right' as const },
 ];
 
 function can(ability: string): boolean {
@@ -1875,6 +1868,10 @@ function onTableRequest(props: any) {
   fetchRequests();
 }
 
+function onRowClick(evt: Event, row: PartsRequest) {
+  viewRequest(row);
+}
+
 function openCreateDialog() {
   // Reset validation first
   resetValidation();
@@ -2060,6 +2057,80 @@ async function viewPhotos(request: PartsRequest) {
   showPhotosDialog.value = true;
 }
 
+/**
+ * Auto-assign request to next available run
+ */
+async function assignToNextRun(request: PartsRequest) {
+  assigningToNextRun.value = true;
+  try {
+    const result = await partsRequestsStore.assignToNextAvailableRun(request.id);
+
+    if (result.saturdayPrompt) {
+      // Show Saturday prompt dialog
+      const data: { requestId: number; saturdayDate: string; saturdayTime?: string; routeId?: number } = {
+        requestId: request.id,
+        saturdayDate: result.saturdayDate || '',
+      };
+      if (result.saturdayTime) data.saturdayTime = result.saturdayTime;
+      if (result.routeId) data.routeId = result.routeId;
+      saturdayPromptData.value = data;
+      showSaturdayPromptDialog.value = true;
+      return;
+    }
+
+    if (result.needsManualAssignment) {
+      // User was notified via store notification
+      return;
+    }
+
+    if (result.success && result.data) {
+      // Update the viewing request with the new data
+      viewingRequest.value = result.data;
+      // Refresh the list
+      await fetchRequests();
+    }
+  } catch (error) {
+    console.error('Failed to assign to next run:', error);
+  } finally {
+    assigningToNextRun.value = false;
+  }
+}
+
+/**
+ * Handle Saturday prompt response - user chooses Saturday or next business day
+ */
+async function handleSaturdayChoice(useSaturday: boolean) {
+  if (!saturdayPromptData.value) return;
+
+  showSaturdayPromptDialog.value = false;
+
+  // TODO: Call backend with the user's choice
+  // For now, if user chooses Saturday, we accept; otherwise need separate endpoint
+  // The backend auto-assignment already assigned to Saturday, so:
+  // - If useSaturday: refresh to show assignment
+  // - If !useSaturday: would need to unassign and find next weekday run
+
+  if (useSaturday) {
+    // Refresh to show the Saturday assignment
+    if (viewingRequest.value) {
+      viewingRequest.value = await partsRequestsStore.fetchRequest(viewingRequest.value.id);
+    }
+    await fetchRequests();
+    $q.notify({
+      type: 'positive',
+      message: 'Request assigned to Saturday run',
+    });
+  } else {
+    // For now, inform user that weekday assignment needs manual selection
+    $q.notify({
+      type: 'info',
+      message: 'Please manually assign to a weekday run',
+    });
+  }
+
+  saturdayPromptData.value = null;
+}
+
 async function loadRunners() {
   try {
     const response = await api.get('/users', { params: { active: true } });
@@ -2092,6 +2163,16 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+/* Clickable table rows */
+.clickable-rows :deep(tbody tr) {
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.clickable-rows :deep(tbody tr:hover) {
+  background-color: rgba(0, 0, 0, 0.04);
+}
+
 /* Simple spacing for view dialog content children */
 .view-dialog-content > * {
   margin-bottom: 16px;

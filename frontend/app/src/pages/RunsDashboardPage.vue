@@ -75,6 +75,8 @@
             :loading="loading"
             :pagination="{ rowsPerPage: 20 }"
             :no-data-label="'No runs scheduled for this date'"
+            class="clickable-rows"
+            @row-click="onRowClick"
           >
             <!-- Route Name -->
             <template #body-cell-route="props">
@@ -141,26 +143,36 @@
               </q-td>
             </template>
 
-            <!-- Progress -->
+            <!-- Progress (pickup/delivered counts) -->
             <template #body-cell-progress="props">
               <q-td :props="props">
-                <template v-if="props.row.status === 'in_progress' && props.row.stop_actuals?.length">
-                  <div class="row items-center no-wrap" style="min-width: 120px">
+                <div v-if="getRequestCount(props.row) > 0" class="row items-center no-wrap" style="min-width: 160px">
+                  <div class="col">
+                    <div class="row items-center q-gutter-xs q-mb-xs">
+                      <span class="text-caption text-grey-7">
+                        Picked: {{ getPickedUpCount(props.row) }}/{{ getRequestCount(props.row) }}
+                      </span>
+                      <span class="text-caption text-grey-5">|</span>
+                      <span class="text-caption text-grey-7">
+                        Delivered: {{ getDeliveredCount(props.row) }}/{{ getRequestCount(props.row) }}
+                      </span>
+                    </div>
                     <q-linear-progress
-                      :value="getProgressPercent(props.row)"
-                      color="primary"
-                      class="q-mr-sm"
-                      style="flex: 1"
+                      :value="getPickedUpCount(props.row) / Math.max(getRequestCount(props.row), 1)"
+                      :color="props.row.status === 'completed' ? 'green' : 'blue'"
                       rounded
+                      size="6px"
                     />
-                    <span class="text-caption">{{ getProgressLabel(props.row) }}</span>
                   </div>
-                </template>
-                <template v-else-if="props.row.status === 'completed'">
-                  <q-icon name="check_circle" color="green" />
-                  <span class="q-ml-xs text-green">Done</span>
-                </template>
-                <span v-else class="text-grey-5">-</span>
+                  <q-icon
+                    v-if="props.row.status === 'completed'"
+                    name="check_circle"
+                    color="green"
+                    size="sm"
+                    class="q-ml-sm"
+                  />
+                </div>
+                <span v-else class="text-grey-5">No items</span>
               </q-td>
             </template>
 
@@ -168,23 +180,13 @@
             <template #body-cell-actions="props">
               <q-td :props="props">
                 <q-btn
-                  flat
-                  round
-                  dense
-                  icon="visibility"
-                  color="primary"
-                  @click="viewRunDetails(props.row)"
-                >
-                  <q-tooltip>View Details</q-tooltip>
-                </q-btn>
-                <q-btn
-                  v-if="props.row.status === 'pending'"
+                  v-if="props.row.status === 'pending' || props.row.status === 'in_progress'"
                   flat
                   round
                   dense
                   icon="person_add"
                   color="secondary"
-                  @click="openAssignRunnerDialog(props.row)"
+                  @click.stop="openAssignRunnerDialog(props.row)"
                 >
                   <q-tooltip>{{ props.row.assigned_runner ? 'Change Runner' : 'Assign Runner' }}</q-tooltip>
                 </q-btn>
@@ -195,7 +197,7 @@
                   dense
                   icon="merge"
                   color="orange"
-                  @click="openMergeDialog(props.row)"
+                  @click.stop="openMergeDialog(props.row)"
                 >
                   <q-tooltip>Merge with another run</q-tooltip>
                 </q-btn>
@@ -223,6 +225,31 @@
             :label="formatStatus(selectedRun.status)"
             class="q-mr-md"
           />
+          <!-- Action buttons for pending/in_progress runs -->
+          <q-btn
+            v-if="selectedRun?.status === 'pending' || selectedRun?.status === 'in_progress'"
+            flat
+            round
+            dense
+            icon="person_add"
+            color="secondary"
+            class="q-mr-xs"
+            @click="openAssignRunnerDialogFromDetail"
+          >
+            <q-tooltip>{{ selectedRun?.assigned_runner ? 'Change Runner' : 'Assign Runner' }}</q-tooltip>
+          </q-btn>
+          <q-btn
+            v-if="selectedRun?.status === 'pending' && selectedRun && canMergeRun(selectedRun)"
+            flat
+            round
+            dense
+            icon="merge"
+            color="orange"
+            class="q-mr-xs"
+            @click="openMergeDialogFromDetail"
+          >
+            <q-tooltip>Merge with another run</q-tooltip>
+          </q-btn>
           <q-btn flat round dense icon="close" @click="showRunDetail = false" />
         </q-card-section>
 
@@ -315,6 +342,95 @@
                 </div>
                 <div v-else class="text-grey-5 text-center q-py-md">
                   Run has not started yet
+                </div>
+              </q-card-section>
+            </q-card>
+
+            <!-- All Requests on this Run -->
+            <q-card flat bordered>
+              <q-card-section>
+                <div class="row items-center q-mb-md">
+                  <div class="text-subtitle2 text-grey-7">
+                    All Requests ({{ selectedRun.requests?.length || 0 }})
+                  </div>
+                  <q-space />
+                  <div class="text-caption">
+                    <span class="text-blue">Picked: {{ getPickedUpCount(selectedRun) }}</span>
+                    <span class="text-grey-5 q-mx-xs">|</span>
+                    <span class="text-green">Delivered: {{ getDeliveredCount(selectedRun) }}</span>
+                  </div>
+                </div>
+
+                <q-table
+                  v-if="selectedRun.requests?.length"
+                  flat
+                  dense
+                  :rows="selectedRun.requests"
+                  :columns="requestColumns"
+                  row-key="id"
+                  :pagination="{ rowsPerPage: 10 }"
+                  :row-class="getRequestRowClass"
+                  class="run-requests-table"
+                >
+                  <!-- Reference Number -->
+                  <template #body-cell-reference_number="props">
+                    <q-td :props="props">
+                      <div class="text-weight-medium text-primary">
+                        {{ props.row.reference_number }}
+                      </div>
+                    </q-td>
+                  </template>
+
+                  <!-- Type -->
+                  <template #body-cell-type="props">
+                    <q-td :props="props">
+                      <q-badge :color="getRequestTypeColor(props.row.request_type?.name)">
+                        {{ formatRequestType(props.row.request_type?.name) }}
+                      </q-badge>
+                    </q-td>
+                  </template>
+
+                  <!-- From / To -->
+                  <template #body-cell-from_to="props">
+                    <q-td :props="props">
+                      <div class="row items-center no-wrap">
+                        <span>{{ getRequestOrigin(props.row) }}</span>
+                        <q-icon name="arrow_forward" size="xs" class="q-mx-xs text-grey-5" />
+                        <span>{{ getRequestDestination(props.row) }}</span>
+                      </div>
+                    </q-td>
+                  </template>
+
+                  <!-- Details -->
+                  <template #body-cell-details="props">
+                    <q-td :props="props">
+                      <div class="ellipsis" style="max-width: 200px">
+                        {{ props.row.details || '-' }}
+                      </div>
+                    </q-td>
+                  </template>
+
+                  <!-- Urgency -->
+                  <template #body-cell-urgency="props">
+                    <q-td :props="props">
+                      <q-badge :color="getUrgencyColor(props.row.urgency?.name)">
+                        {{ formatUrgency(props.row.urgency?.name) }}
+                      </q-badge>
+                    </q-td>
+                  </template>
+
+                  <!-- Status -->
+                  <template #body-cell-status="props">
+                    <q-td :props="props">
+                      <q-badge :color="getRequestStatusColor(props.row.status?.name)">
+                        {{ formatRequestStatus(props.row.status?.name) }}
+                      </q-badge>
+                    </q-td>
+                  </template>
+                </q-table>
+
+                <div v-else class="text-grey-5 text-center q-py-md">
+                  No requests assigned to this run
                 </div>
               </q-card-section>
             </q-card>
@@ -493,6 +609,17 @@
         </q-card-section>
 
         <q-card-actions align="right">
+          <q-btn
+            v-if="assignRunnerRun?.assigned_runner && assignRunnerRun?.status === 'pending'"
+            flat
+            label="Unassign"
+            color="negative"
+            @click="unassignRunner"
+            :loading="assigningRunner"
+          >
+            <q-tooltip>Remove runner from this run</q-tooltip>
+          </q-btn>
+          <q-space />
           <q-btn flat label="Cancel" @click="showAssignRunnerDialog = false" />
           <q-btn
             flat
@@ -500,6 +627,7 @@
             color="primary"
             @click="saveRunnerAssignment"
             :loading="assigningRunner"
+            :disable="!assignRunnerForm.runner_id"
           />
         </q-card-actions>
       </q-card>
@@ -566,27 +694,28 @@ const runnerOptions = computed(() => {
 
 const availableMergeTargets = computed(() => {
   if (!mergeSourceRun.value) return []
+  // Can merge into pending or in_progress runs on the same route
   return runs.value
     .filter(
       (r) =>
         r.id !== mergeSourceRun.value?.id &&
         r.route_id === mergeSourceRun.value?.route_id &&
-        r.status === 'pending'
+        (r.status === 'pending' || r.status === 'in_progress')
     )
     .map((r) => ({
       id: r.id,
-      label: `${r.display_name || r.route?.name} @ ${formatTime(r.scheduled_time)}`,
+      label: `${r.display_name || r.route?.name} @ ${formatTime(r.scheduled_time)}${r.status === 'in_progress' ? ' (In Progress)' : ''}`,
       run: r,
     }))
 })
 
-// Check if a run can be merged (has other pending runs on the same route)
+// Check if a run can be merged (has other pending or in_progress runs on the same route)
 function canMergeRun(run: RunInstance): boolean {
   return runs.value.some(
     (r) =>
       r.id !== run.id &&
       r.route_id === run.route_id &&
-      r.status === 'pending'
+      (r.status === 'pending' || r.status === 'in_progress')
   )
 }
 
@@ -632,6 +761,16 @@ const columns = [
   { name: 'actions', label: '', field: 'actions', align: 'center' as const },
 ]
 
+// Request columns for the run detail dialog (similar to PartsRequestsPage but without assigned_run)
+const requestColumns = [
+  { name: 'reference_number', label: 'Reference #', field: 'reference_number', align: 'left' as const, sortable: true },
+  { name: 'type', label: 'Type', field: 'request_type', align: 'left' as const },
+  { name: 'from_to', label: 'From / To', field: 'from_to', align: 'left' as const },
+  { name: 'details', label: 'Details', field: 'details', align: 'left' as const },
+  { name: 'urgency', label: 'Urgency', field: 'urgency', align: 'center' as const },
+  { name: 'status', label: 'Status', field: 'status', align: 'center' as const },
+]
+
 onMounted(async () => {
   await Promise.all([loadRuns(), routesStore.fetchRoutes(), loadUsers()])
 })
@@ -648,6 +787,10 @@ async function loadUsers() {
 watch(selectedDate, async () => {
   await loadRuns()
 })
+
+function onRowClick(evt: Event, row: RunInstance) {
+  viewRunDetails(row)
+}
 
 async function loadRuns() {
   loading.value = true
@@ -711,6 +854,11 @@ function openMergeDialog(run: RunInstance) {
   showMergeDialog.value = true
 }
 
+function openMergeDialogFromDetail() {
+  if (!selectedRun.value) return
+  openMergeDialog(selectedRun.value)
+}
+
 async function mergeRuns() {
   if (!mergeSourceRun.value || !mergeForm.target_run_id) return
 
@@ -727,6 +875,11 @@ async function mergeRuns() {
     })
     showMergeDialog.value = false
     await loadRuns()
+    // Refresh detail dialog if open (show the target run after merge)
+    if (showRunDetail.value && mergeForm.target_run_id) {
+      await runsStore.fetchRun(mergeForm.target_run_id)
+      selectedRun.value = runsStore.activeRun
+    }
   } catch (error: any) {
     $q.notify({
       type: 'negative',
@@ -744,33 +897,64 @@ function openAssignRunnerDialog(run: RunInstance) {
   showAssignRunnerDialog.value = true
 }
 
+function openAssignRunnerDialogFromDetail() {
+  if (!selectedRun.value) return
+  openAssignRunnerDialog(selectedRun.value)
+}
+
 async function saveRunnerAssignment() {
-  if (!assignRunnerRun.value) return
+  if (!assignRunnerRun.value || !assignRunnerForm.runner_id) return
 
   assigningRunner.value = true
   try {
-    if (assignRunnerForm.runner_id) {
-      await runsStore.assignRunner(assignRunnerRun.value.id, assignRunnerForm.runner_id)
-      $q.notify({
-        type: 'positive',
-        message: 'Runner assigned successfully',
-      })
-    } else {
-      // Unassign runner - call API directly since store doesn't have unassign
-      await api.post(`/runs/${assignRunnerRun.value.id}/assign`, {
-        assigned_runner_user_id: null,
-      })
-      $q.notify({
-        type: 'positive',
-        message: 'Runner unassigned',
-      })
-    }
+    await runsStore.assignRunner(assignRunnerRun.value.id, assignRunnerForm.runner_id)
+    $q.notify({
+      type: 'positive',
+      message: 'Runner assigned successfully',
+    })
     showAssignRunnerDialog.value = false
     await loadRuns()
+    // Refresh detail dialog if open
+    if (showRunDetail.value && selectedRun.value?.id === assignRunnerRun.value.id) {
+      await runsStore.fetchRun(assignRunnerRun.value.id)
+      selectedRun.value = runsStore.activeRun
+    }
   } catch (error: any) {
     $q.notify({
       type: 'negative',
       message: error.response?.data?.message || 'Failed to assign runner',
+    })
+  } finally {
+    assigningRunner.value = false
+  }
+}
+
+async function unassignRunner() {
+  if (!assignRunnerRun.value) return
+
+  assigningRunner.value = true
+  try {
+    await runsStore.unassignRunner(assignRunnerRun.value.id)
+    $q.notify({
+      type: 'positive',
+      message: 'Runner unassigned successfully',
+    })
+    showAssignRunnerDialog.value = false
+    // These can fail but unassign already succeeded
+    try {
+      await loadRuns()
+      // Refresh detail dialog if open
+      if (showRunDetail.value && selectedRun.value?.id === assignRunnerRun.value.id) {
+        await runsStore.fetchRun(assignRunnerRun.value.id)
+        selectedRun.value = runsStore.activeRun
+      }
+    } catch (refreshError) {
+      console.warn('Failed to refresh runs after unassign:', refreshError)
+    }
+  } catch (error: any) {
+    $q.notify({
+      type: 'negative',
+      message: error.response?.data?.message || 'Failed to unassign runner',
     })
   } finally {
     assigningRunner.value = false
@@ -840,6 +1024,103 @@ function getProgressLabel(run: RunInstance): string {
   if (!run.stop_actuals || run.stop_actuals.length === 0) return '0/0'
   const completed = run.stop_actuals.filter(s => s.departed_at).length
   return `${completed}/${run.stop_actuals.length}`
+}
+
+// Request progress tracking functions
+function getRequestCount(run: RunInstance): number {
+  return run.requests?.length ?? 0
+}
+
+function getPickedUpCount(run: RunInstance): number {
+  const pickedUpStatuses = ['picked_up', 'en_route_dropoff', 'delivered']
+  return (run.requests ?? []).filter(r =>
+    pickedUpStatuses.includes(r.status?.name ?? '')
+  ).length
+}
+
+function getDeliveredCount(run: RunInstance): number {
+  return (run.requests ?? []).filter(r =>
+    r.status?.name === 'delivered'
+  ).length
+}
+
+function isRequestCompleted(request: any): boolean {
+  return request.status?.name === 'delivered'
+}
+
+// Request table helper functions
+function getRequestRowClass(row: any): string {
+  return isRequestCompleted(row) ? 'is-completed' : ''
+}
+
+function getRequestOrigin(request: any): string {
+  if (request.vendor?.name) {
+    return request.vendor.name
+  }
+  if (request.origin_location?.name) {
+    return request.origin_location.name
+  }
+  return 'Unknown'
+}
+
+function getRequestDestination(request: any): string {
+  if (request.receiving_location?.name) {
+    return request.receiving_location.name
+  }
+  if (request.customer?.name) {
+    return request.customer.name
+  }
+  return 'Unknown'
+}
+
+function getRequestTypeColor(typeName: string | undefined): string {
+  switch (typeName) {
+    case 'pickup': return 'blue'
+    case 'delivery': return 'green'
+    case 'transfer': return 'purple'
+    case 'return': return 'orange'
+    default: return 'grey'
+  }
+}
+
+function formatRequestType(typeName: string | undefined): string {
+  if (!typeName) return 'Unknown'
+  return typeName.charAt(0).toUpperCase() + typeName.slice(1)
+}
+
+function getUrgencyColor(urgencyName: string | undefined): string {
+  switch (urgencyName) {
+    case 'hot': return 'red'
+    case 'rush': return 'orange'
+    case 'first_available': return 'blue'
+    case 'scheduled': return 'grey'
+    default: return 'grey'
+  }
+}
+
+function formatUrgency(urgencyName: string | undefined): string {
+  if (!urgencyName) return 'Normal'
+  return urgencyName.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
+}
+
+function getRequestStatusColor(statusName: string | undefined): string {
+  switch (statusName) {
+    case 'new': return 'grey'
+    case 'assigned': return 'blue-grey'
+    case 'confirmed': return 'cyan'
+    case 'en_route_pickup': return 'blue'
+    case 'picked_up': return 'teal'
+    case 'en_route_dropoff': return 'indigo'
+    case 'delivered': return 'green'
+    case 'canceled': return 'red'
+    case 'problem': return 'orange'
+    default: return 'grey'
+  }
+}
+
+function formatRequestStatus(statusName: string | undefined): string {
+  if (!statusName) return 'Unknown'
+  return statusName.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
 }
 
 function getStopClass(actual: RunStopActual): string {
@@ -917,3 +1198,25 @@ function getInitials(name: string): string {
   return name.charAt(0).toUpperCase()
 }
 </script>
+
+<style scoped>
+/* Clickable table rows */
+.clickable-rows :deep(tbody tr) {
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.clickable-rows :deep(tbody tr:hover) {
+  background-color: rgba(0, 0, 0, 0.04);
+}
+
+/* Completed request styling (40% opacity) */
+.run-requests-table :deep(tr.is-completed) {
+  opacity: 0.4;
+  filter: grayscale(30%);
+}
+
+.run-requests-table :deep(tr.is-completed:hover) {
+  opacity: 0.5;
+}
+</style>

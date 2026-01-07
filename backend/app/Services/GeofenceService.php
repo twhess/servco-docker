@@ -6,10 +6,18 @@ use App\Models\GeoFence;
 use App\Models\GeoFenceEvent;
 use App\Models\PartsRequest;
 use App\Models\PartsRequestEvent;
+use App\Models\RouteStop;
+use App\Models\RunInstance;
+use App\Models\ServiceLocation;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 
 class GeofenceService
 {
+    /**
+     * Earth radius in meters for Haversine formula.
+     */
+    private const EARTH_RADIUS_M = 6371000;
     /**
      * Check if runner has entered/exited any relevant geofences
      */
@@ -190,5 +198,190 @@ class GeofenceService
                 'notes' => "Auto-detected departure from {$geofence->name}",
             ]);
         }
+    }
+
+    // ==========================================
+    // Runner-specific Geofence Methods
+    // ==========================================
+
+    /**
+     * Calculate the distance between two GPS coordinates using the Haversine formula.
+     *
+     * @param float $lat1 Latitude of first point
+     * @param float $lng1 Longitude of first point
+     * @param float $lat2 Latitude of second point
+     * @param float $lng2 Longitude of second point
+     * @return float Distance in meters
+     */
+    public function calculateDistance(float $lat1, float $lng1, float $lat2, float $lng2): float
+    {
+        $latFrom = deg2rad($lat1);
+        $lonFrom = deg2rad($lng1);
+        $latTo = deg2rad($lat2);
+        $lonTo = deg2rad($lng2);
+
+        $latDelta = $latTo - $latFrom;
+        $lonDelta = $lonTo - $lonFrom;
+
+        $a = sin($latDelta / 2) ** 2 +
+             cos($latFrom) * cos($latTo) * sin($lonDelta / 2) ** 2;
+
+        $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
+
+        return self::EARTH_RADIUS_M * $c;
+    }
+
+    /**
+     * Check if a point is inside a location's geofence.
+     *
+     * @param float $lat Current latitude
+     * @param float $lng Current longitude
+     * @param ServiceLocation $location The location to check against
+     * @return bool
+     */
+    public function isInsideLocation(float $lat, float $lng, ServiceLocation $location): bool
+    {
+        // Must have coordinates set
+        if (!$location->latitude || !$location->longitude) {
+            return false;
+        }
+
+        $distance = $this->calculateDistance(
+            $lat,
+            $lng,
+            (float) $location->latitude,
+            (float) $location->longitude
+        );
+
+        return $distance <= ($location->geofence_radius_m ?? 200);
+    }
+
+    /**
+     * Find the nearest stop for a run based on current position.
+     *
+     * @param float $lat Current latitude
+     * @param float $lng Current longitude
+     * @param int $runId The run instance ID
+     * @return array|null Array with 'stop', 'distance', 'inside' keys, or null if no stops
+     */
+    public function findNearestStop(float $lat, float $lng, int $runId): ?array
+    {
+        $run = RunInstance::with(['route.stops.location'])->find($runId);
+
+        if (!$run || !$run->route) {
+            return null;
+        }
+
+        $nearestStop = null;
+        $nearestDistance = PHP_FLOAT_MAX;
+
+        foreach ($run->route->stops as $stop) {
+            $location = $stop->location;
+
+            if (!$location || !$location->latitude || !$location->longitude) {
+                continue;
+            }
+
+            $distance = $this->calculateDistance(
+                $lat,
+                $lng,
+                (float) $location->latitude,
+                (float) $location->longitude
+            );
+
+            if ($distance < $nearestDistance) {
+                $nearestDistance = $distance;
+                $nearestStop = $stop;
+            }
+        }
+
+        if (!$nearestStop) {
+            return null;
+        }
+
+        $radius = $nearestStop->location->geofence_radius_m ?? 200;
+
+        return [
+            'stop' => $nearestStop,
+            'stop_id' => $nearestStop->id,
+            'location_id' => $nearestStop->location_id,
+            'location_name' => $nearestStop->location->name,
+            'distance_m' => round($nearestDistance),
+            'inside' => $nearestDistance <= $radius,
+            'radius_m' => $radius,
+        ];
+    }
+
+    /**
+     * Get all stops for a run with their current distance from a position.
+     *
+     * @param float $lat Current latitude
+     * @param float $lng Current longitude
+     * @param int $runId The run instance ID
+     * @return Collection
+     */
+    public function getStopsWithDistances(float $lat, float $lng, int $runId): Collection
+    {
+        $run = RunInstance::with(['route.stops.location'])->find($runId);
+
+        if (!$run || !$run->route) {
+            return collect();
+        }
+
+        return $run->route->stops->map(function ($stop) use ($lat, $lng) {
+            $location = $stop->location;
+
+            if (!$location || !$location->latitude || !$location->longitude) {
+                return [
+                    'stop_id' => $stop->id,
+                    'location_id' => $stop->location_id,
+                    'location_name' => $location?->name ?? 'Unknown',
+                    'stop_order' => $stop->stop_order,
+                    'distance_m' => null,
+                    'inside' => false,
+                    'has_coordinates' => false,
+                ];
+            }
+
+            $distance = $this->calculateDistance(
+                $lat,
+                $lng,
+                (float) $location->latitude,
+                (float) $location->longitude
+            );
+
+            $radius = $location->geofence_radius_m ?? 200;
+
+            return [
+                'stop_id' => $stop->id,
+                'location_id' => $stop->location_id,
+                'location_name' => $location->name,
+                'stop_order' => $stop->stop_order,
+                'distance_m' => round($distance),
+                'inside' => $distance <= $radius,
+                'radius_m' => $radius,
+                'has_coordinates' => true,
+            ];
+        })->sortBy('stop_order')->values();
+    }
+
+    /**
+     * Check if the runner has exited a specific stop.
+     *
+     * @param float $lat Current latitude
+     * @param float $lng Current longitude
+     * @param RouteStop $stop The stop to check
+     * @return bool True if outside the stop's geofence
+     */
+    public function hasExitedStop(float $lat, float $lng, RouteStop $stop): bool
+    {
+        $location = $stop->location;
+
+        if (!$location || !$location->latitude || !$location->longitude) {
+            // If no coordinates, can't determine exit
+            return false;
+        }
+
+        return !$this->isInsideLocation($lat, $lng, $location);
     }
 }

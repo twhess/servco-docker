@@ -32,6 +32,7 @@ export interface Vendor {
   name: string
   legal_name?: string | null
   normalized_name: string
+  is_acronym: boolean
   phone?: string | null
   email?: string | null
   notes?: string | null
@@ -66,7 +67,14 @@ export interface VendorCreateRequest {
   email?: string | null
   notes?: string | null
   status?: 'active' | 'inactive'
+  is_acronym?: boolean
   force_create?: boolean
+}
+
+export interface AcronymDetectionResult {
+  isLikely: boolean
+  reason: string
+  suggestedName: string
 }
 
 export interface AddressCreateRequest {

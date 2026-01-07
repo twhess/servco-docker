@@ -1,0 +1,41 @@
+# Credentials - NEVER commit these
+backend/storage/credentials/*.json
+backend/storage/credentials/*.p12
+backend/storage/credentials/*.pem
+
+# Environment files
+.env
+.env.*
+!.env.example
+!.env.production.example
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Dependencies (if not using Docker volumes)
+node_modules/
+
+# Build outputs
+dist/
+build/
+
+# Laravel
+backend/vendor/
+backend/storage/*.key
+backend/storage/logs/*
+!backend/storage/logs/.gitkeep
+
+# Quasar/Vue
+frontend/app/dist/
+frontend/app/.quasar/

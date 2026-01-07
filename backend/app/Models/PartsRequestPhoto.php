@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Traits\HasAuditFields;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -9,12 +10,11 @@ use Illuminate\Support\Facades\Storage;
 
 class PartsRequestPhoto extends Model
 {
-    use HasFactory;
-
-    const UPDATED_AT = null;
+    use HasFactory, HasAuditFields;
 
     protected $fillable = [
         'parts_request_id',
+        'activity_id',
         'stage',
         'file_path',
         'taken_at',
@@ -38,6 +38,14 @@ class PartsRequestPhoto extends Model
     public function takenBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'taken_by_user_id');
+    }
+
+    /**
+     * The activity this photo is associated with (if any).
+     */
+    public function activity(): BelongsTo
+    {
+        return $this->belongsTo(PartsRequestActivity::class, 'activity_id');
     }
 
     // Get full URL to photo

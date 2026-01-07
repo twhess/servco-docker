@@ -19,10 +19,17 @@ const api = axios.create({ baseURL: 'http://localhost:8080/api' });
 // Add request interceptor to include auth token
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('auth_token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+    // Check for runner token first (for /runner/* routes), then regular auth token
+    const runnerToken = localStorage.getItem('runner_auth_token');
+    const authToken = localStorage.getItem('auth_token');
+
+    // Use runner token for runner API endpoints
+    if (config.url?.startsWith('/runner') && runnerToken) {
+      config.headers.Authorization = `Bearer ${runnerToken}`;
+    } else if (authToken) {
+      config.headers.Authorization = `Bearer ${authToken}`;
     }
+
     return config;
   },
   (error: Error) => {
@@ -35,9 +42,16 @@ api.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
     if (error.response?.status === 401) {
-      // Clear token and redirect to login if unauthorized
-      localStorage.removeItem('auth_token');
-      window.location.href = '/login';
+      const url = error.config?.url || '';
+
+      // Check if this is a runner API call
+      if (url.startsWith('/runner')) {
+        localStorage.removeItem('runner_auth_token');
+        window.location.href = '/runner/login';
+      } else {
+        localStorage.removeItem('auth_token');
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(error);
   }

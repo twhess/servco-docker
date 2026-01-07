@@ -197,11 +197,39 @@
         label="Vendor Name"
         type="text"
         :error="getError('name')"
-        @update:model-value="updateField('name', $event); checkForDuplicates()"
-        @blur="touchField('name')"
+        @update:model-value="updateField('name', $event); checkForDuplicates(); checkForAcronym()"
+        @blur="touchField('name'); checkForAcronym()"
         required
         icon="business"
       />
+
+      <!-- Acronym Detection -->
+      <div v-if="showAcronymPrompt && !editingVendor" class="col-12" style="grid-column: 1 / -1;">
+        <q-banner class="bg-blue-1 q-mb-md" rounded>
+          <template v-slot:avatar>
+            <q-icon name="info" color="primary" />
+          </template>
+          <div class="text-body2">
+            This looks like an acronym. Save as <strong>{{ acronymSuggestion }}</strong> (all caps)?
+          </div>
+          <template v-slot:action>
+            <q-btn
+              flat
+              dense
+              label="Use ALL CAPS"
+              color="primary"
+              @click="acceptAcronymSuggestion"
+            />
+            <q-btn
+              flat
+              dense
+              label="Keep as typed"
+              color="grey"
+              @click="rejectAcronymSuggestion"
+            />
+          </template>
+        </q-banner>
+      </div>
 
       <!-- Duplicate Warning -->
       <div v-if="duplicateCandidates.length > 0" class="col-12" style="grid-column: 1 / -1;">
@@ -509,6 +537,7 @@ import { useVendorsStore } from 'src/stores/vendors';
 import type { Vendor, Address, VendorDuplicateCandidate } from 'src/types/vendors';
 import { debounce } from 'quasar';
 import { useFormValidation, validationRules } from 'src/composables/useFormValidation';
+import { detectAcronym } from 'src/composables/useAcronymDetector';
 import MobileFormDialog from 'src/components/MobileFormDialog.vue';
 import MobileFormField from 'src/components/MobileFormField.vue';
 
@@ -527,6 +556,11 @@ const viewingVendor = ref<Vendor | null>(null);
 const addressForVendor = ref<Vendor | null>(null);
 const duplicateCandidates = ref<VendorDuplicateCandidate[]>([]);
 const savingAddress = ref(false);
+
+// Acronym detection state
+const showAcronymPrompt = ref(false);
+const acronymSuggestion = ref('');
+const isAcronymConfirmed = ref<boolean | null>(null); // null = not decided, true = use caps, false = keep as typed
 
 const filters = ref({
   search: '',
@@ -695,6 +729,46 @@ function checkForDuplicates() {
   debouncedDuplicateCheck();
 }
 
+// Acronym detection - runs on input change and blur
+const debouncedAcronymCheck = debounce(() => {
+  // Don't show prompt if user already made a decision
+  if (isAcronymConfirmed.value !== null) {
+    return;
+  }
+
+  const name = vendorForm.name.trim();
+  if (name.length < 2) {
+    showAcronymPrompt.value = false;
+    acronymSuggestion.value = '';
+    return;
+  }
+
+  const result = detectAcronym(name);
+  if (result.isLikely) {
+    acronymSuggestion.value = result.suggestedName;
+    // Only show prompt if the suggestion is different from what they typed
+    showAcronymPrompt.value = name !== result.suggestedName;
+  } else {
+    showAcronymPrompt.value = false;
+    acronymSuggestion.value = '';
+  }
+}, 300);
+
+function checkForAcronym() {
+  debouncedAcronymCheck();
+}
+
+function acceptAcronymSuggestion() {
+  vendorForm.name = acronymSuggestion.value;
+  isAcronymConfirmed.value = true;
+  showAcronymPrompt.value = false;
+}
+
+function rejectAcronymSuggestion() {
+  isAcronymConfirmed.value = false;
+  showAcronymPrompt.value = false;
+}
+
 function onTableRequest(props: any) {
   pagination.value.page = props.pagination.page;
   pagination.value.rowsPerPage = props.pagination.rowsPerPage;
@@ -705,6 +779,10 @@ function openCreateDialog() {
   resetValidation();
   editingVendor.value = null;
   duplicateCandidates.value = [];
+  // Reset acronym state
+  showAcronymPrompt.value = false;
+  acronymSuggestion.value = '';
+  isAcronymConfirmed.value = null;
   Object.assign(vendorForm, {
     name: '',
     legal_name: '',
@@ -756,13 +834,16 @@ async function submitVendorForm() {
         notes: vendorForm.notes || undefined,
       });
     } else {
-      // Create new vendor
+      // Create new vendor - pass is_acronym if user confirmed
       const result = await vendorsStore.createVendor({
         name: vendorForm.name,
-        legal_name: vendorForm.legal_name || undefined,
-        phone: vendorForm.phone || undefined,
-        email: vendorForm.email || undefined,
-        notes: vendorForm.notes || undefined,
+        legal_name: vendorForm.legal_name || null,
+        phone: vendorForm.phone || null,
+        email: vendorForm.email || null,
+        notes: vendorForm.notes || null,
+        // Pass is_acronym if user explicitly confirmed (true) or rejected (false)
+        // If null (not prompted or not decided), let backend auto-detect
+        ...(isAcronymConfirmed.value !== null ? { is_acronym: isAcronymConfirmed.value } : {}),
         force_create: duplicateCandidates.value.length > 0,
       });
 

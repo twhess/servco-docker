@@ -9,6 +9,31 @@ const routes: RouteRecordRaw[] = [
     path: '/register',
     component: () => import('pages/RegisterPage.vue'),
   },
+
+  // Runner Mobile Interface Routes (uses BlankLayout)
+  {
+    path: '/runner',
+    component: () => import('layouts/BlankLayout.vue'),
+    children: [
+      {
+        path: 'login',
+        name: 'runner-login',
+        component: () => import('pages/runner/RunnerLoginPage.vue'),
+      },
+      {
+        path: 'home',
+        name: 'runner-home',
+        component: () => import('pages/runner/RunnerHomePage.vue'),
+        meta: { requiresRunnerAuth: true },
+      },
+      {
+        path: 'run/:runId',
+        name: 'runner-run',
+        component: () => import('pages/runner/RunnerRunPage.vue'),
+        meta: { requiresRunnerAuth: true },
+      },
+    ],
+  },
   {
     path: '/',
     component: () => import('layouts/MainLayout.vue'),
@@ -29,6 +54,8 @@ const routes: RouteRecordRaw[] = [
       { path: 'closed-dates', component: () => import('pages/ClosedDatesPage.vue') },
       { path: 'vendors', component: () => import('pages/VendorsPage.vue') },
       { path: 'customers', component: () => import('pages/CustomersPage.vue') },
+      { path: 'emails', component: () => import('pages/EmailsPage.vue') },
+      { path: 'gemini', component: () => import('pages/GeminiPage.vue') },
     ],
   },
 

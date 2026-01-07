@@ -20,6 +20,7 @@ class Vendor extends Model
         'name',
         'legal_name',
         'normalized_name',
+        'is_acronym',
         'phone',
         'email',
         'notes',
@@ -28,6 +29,7 @@ class Vendor extends Model
 
     protected $casts = [
         'status' => 'string',
+        'is_acronym' => 'boolean',
     ];
 
     /**

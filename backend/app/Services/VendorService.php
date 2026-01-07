@@ -7,6 +7,20 @@ use Illuminate\Support\Collection;
 
 class VendorService
 {
+    public function __construct(
+        protected AcronymDetector $acronymDetector
+    ) {}
+
+    /**
+     * Detect if a name is likely an acronym.
+     *
+     * @return array{isLikely: bool, reason: string, suggestedName: string}
+     */
+    public function detectAcronym(string $name): array
+    {
+        return $this->acronymDetector->detect($name);
+    }
+
     /**
      * Normalize vendor name for duplicate detection.
      * - Lowercase
@@ -98,8 +112,12 @@ class VendorService
     }
 
     /**
-     * Create vendor with duplicate check.
+     * Create vendor with duplicate check and acronym handling.
      * If duplicates found and force_create !== true, returns candidates.
+     *
+     * @param array $data Vendor data including 'name', 'is_acronym' (optional), etc.
+     * @param bool $forceCreate Skip duplicate check
+     * @return array
      */
     public function createVendor(array $data, bool $forceCreate = false): array
     {
@@ -118,10 +136,27 @@ class VendorService
             }
         }
 
+        // Handle acronym detection and name formatting
+        $isAcronym = $data['is_acronym'] ?? null;
+        $finalName = $name;
+
+        // If is_acronym not explicitly set, auto-detect
+        if ($isAcronym === null) {
+            $detection = $this->acronymDetector->detect($name);
+            $isAcronym = $detection['isLikely'];
+            if ($isAcronym) {
+                $finalName = $detection['suggestedName'];
+            }
+        } elseif ($isAcronym === true) {
+            // User confirmed it's an acronym - format accordingly
+            $finalName = $this->acronymDetector->formatName($name, true);
+        }
+
         // Create the vendor
         $vendor = Vendor::create([
-            'name' => $data['name'],
+            'name' => $finalName,
             'legal_name' => $data['legal_name'] ?? null,
+            'is_acronym' => (bool) $isAcronym,
             'phone' => $data['phone'] ?? null,
             'email' => $data['email'] ?? null,
             'notes' => $data['notes'] ?? null,

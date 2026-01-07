@@ -267,4 +267,141 @@ class RunInstance extends Model
     {
         return $this->scheduled_date->lte(Carbon::today());
     }
+
+    /**
+     * Check if this run has already passed a specific stop
+     * Used to determine if a request can still be picked up on this run
+     *
+     * @param int $stopId The route_stop ID to check
+     * @return bool True if the run has passed this stop
+     */
+    public function hasPassedStop(int $stopId): bool
+    {
+        // If run is completed, it has passed all stops
+        if ($this->status === 'completed') {
+            return true;
+        }
+
+        // If run hasn't started yet, it hasn't passed any stops
+        if ($this->status === 'pending' || !$this->actual_start_at) {
+            return false;
+        }
+
+        // Get the stop we're checking
+        $targetStop = RouteStop::find($stopId);
+        if (!$targetStop || $targetStop->route_id !== $this->route_id) {
+            return true; // Stop doesn't exist or isn't on this route
+        }
+
+        // If we have a current_stop_id, use it for accurate tracking
+        if ($this->current_stop_id) {
+            $currentStop = RouteStop::find($this->current_stop_id);
+            if ($currentStop) {
+                // If current stop order is greater than target, we've passed it
+                return $currentStop->stop_order > $targetStop->stop_order;
+            }
+        }
+
+        // Check stop actuals for explicit departure record
+        $departedFromStop = $this->stopActuals()
+            ->where('route_stop_id', $stopId)
+            ->whereNotNull('departed_at')
+            ->exists();
+
+        if ($departedFromStop) {
+            return true;
+        }
+
+        // Fallback: estimate based on elapsed time
+        return $this->hasPassedStopByTimeEstimate($targetStop);
+    }
+
+    /**
+     * Estimate if run has passed a stop based on elapsed time
+     */
+    private function hasPassedStopByTimeEstimate(RouteStop $targetStop): bool
+    {
+        if (!$this->actual_start_at) {
+            return false;
+        }
+
+        $elapsedMinutes = Carbon::now()->diffInMinutes($this->actual_start_at);
+
+        // Get cumulative time to reach this stop
+        $previousStops = $this->route->stops()
+            ->where('stop_order', '<=', $targetStop->stop_order)
+            ->get();
+
+        $cumulativeMinutes = $previousStops->sum('estimated_duration_minutes');
+
+        // Add a buffer - consider passed if we're past the estimated arrival by 5 min
+        return $elapsedMinutes > ($cumulativeMinutes + 5);
+    }
+
+    /**
+     * Check if this run has passed a specific location (by location_id)
+     * Convenience method that finds the stop for a location
+     *
+     * @param int $locationId The service_location ID to check
+     * @return bool True if the run has passed all stops at this location
+     */
+    public function hasPassedLocation(int $locationId): bool
+    {
+        // Find the stop for this location on this route
+        $stop = $this->route->stops()
+            ->where('location_id', $locationId)
+            ->first();
+
+        if (!$stop) {
+            return true; // Location isn't on this route
+        }
+
+        return $this->hasPassedStop($stop->id);
+    }
+
+    /**
+     * Check if this run is still available for new assignments
+     * A run is available if it's pending OR in_progress but hasn't started moving yet
+     */
+    public function isAvailableForAssignment(): bool
+    {
+        // Completed or cancelled runs aren't available
+        if (in_array($this->status, ['completed', 'cancelled'])) {
+            return false;
+        }
+
+        // Pending runs are always available
+        if ($this->status === 'pending') {
+            return true;
+        }
+
+        // In-progress runs that haven't actually departed first stop are still available
+        if ($this->status === 'in_progress') {
+            $firstStop = $this->route->stops()->orderBy('stop_order')->first();
+            if ($firstStop && !$this->hasPassedStop($firstStop->id)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Check if the scheduled time for this run has passed
+     */
+    public function isScheduledTimePassed(): bool
+    {
+        if (!$this->scheduled_date || !$this->scheduled_time) {
+            return false;
+        }
+
+        $scheduledDateTime = Carbon::parse(
+            $this->scheduled_date->format('Y-m-d') . ' ' .
+            ($this->scheduled_time instanceof \DateTime
+                ? $this->scheduled_time->format('H:i')
+                : $this->scheduled_time)
+        );
+
+        return Carbon::now()->greaterThan($scheduledDateTime);
+    }
 }

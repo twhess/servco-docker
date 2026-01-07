@@ -1,0 +1,41 @@
+# docker-compose.override.yml
+# This file overrides docker-compose.yml with environment-variable-driven ports
+# for running multiple instances in parallel.
+#
+# Environment variables (set by Start-ServcoApp.ps1):
+#   FRONTEND_PORT, BACKEND_PORT, PHPMYADMIN_PORT, MYSQL_PORT, INSTANCE_SUFFIX
+
+services:
+  mysql:
+    container_name: myapp-mysql${INSTANCE_SUFFIX:-}
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - mysql_data${INSTANCE_SUFFIX:-}:/var/lib/mysql
+
+  phpmyadmin:
+    container_name: myapp-phpmyadmin${INSTANCE_SUFFIX:-}
+    ports:
+      - "${PHPMYADMIN_PORT:-8081}:80"
+
+  backend:
+    container_name: myapp-backend${INSTANCE_SUFFIX:-}
+    environment:
+      APP_URL: http://localhost:${BACKEND_PORT:-8080}
+
+  nginx:
+    container_name: myapp-nginx${INSTANCE_SUFFIX:-}
+    ports:
+      - "${BACKEND_PORT:-8080}:80"
+
+  frontend:
+    container_name: myapp-frontend${INSTANCE_SUFFIX:-}
+    ports:
+      - "${FRONTEND_PORT:-9000}:9000"
+    environment:
+      API_BASE_URL: "http://localhost:${BACKEND_PORT:-8080}"
+
+volumes:
+  mysql_data-1:
+  mysql_data-2:
+  mysql_data-3:

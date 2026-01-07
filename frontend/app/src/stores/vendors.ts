@@ -104,6 +104,23 @@ export const useVendorsStore = defineStore('vendors', {
     },
 
     /**
+     * Detect if a name is likely an acronym
+     */
+    async detectAcronym(name: string): Promise<{
+      isLikely: boolean;
+      reason: string;
+      suggestedName: string;
+    }> {
+      try {
+        const response = await api.post('/vendors/detect-acronym', { name });
+        return response.data;
+      } catch (error: any) {
+        console.error('Acronym detection failed:', error);
+        return { isLikely: false, reason: 'Detection failed', suggestedName: name };
+      }
+    },
+
+    /**
      * Create a new vendor with duplicate detection
      */
     async createVendor(data: VendorCreateRequest): Promise<VendorCreateResponse> {
