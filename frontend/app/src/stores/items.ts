@@ -88,7 +88,7 @@ export const useItemsStore = defineStore('items', {
         this.error = error.response?.data?.message || 'Failed to scan QR code'
         Notify.create({
           type: 'negative',
-          message: this.error,
+          message: this.error || undefined,
         })
         throw error
       } finally {
@@ -119,7 +119,7 @@ export const useItemsStore = defineStore('items', {
         this.error = error.response?.data?.message || 'Failed to fetch item'
         Notify.create({
           type: 'negative',
-          message: this.error,
+          message: this.error || undefined,
         })
         throw error
       } finally {
@@ -138,7 +138,7 @@ export const useItemsStore = defineStore('items', {
         this.error = error.response?.data?.message || 'Failed to fetch movement history'
         Notify.create({
           type: 'negative',
-          message: this.error,
+          message: this.error || undefined,
         })
         throw error
       } finally {
@@ -158,7 +158,7 @@ export const useItemsStore = defineStore('items', {
           this.error = error.response?.data?.message || 'Failed to fetch current request'
           Notify.create({
             type: 'negative',
-            message: this.error,
+            message: this.error || undefined,
           })
         }
         return null

@@ -437,7 +437,7 @@ const submitAddress = async () => {
       if (newAddr) {
         emit('update:modelValue', newAddr.id);
         emit('address-created', newAddr);
-        emit('address-selected', newAddr as Address);
+        emit('address-selected', newAddr);
       }
     }
   } finally {
