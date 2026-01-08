@@ -795,7 +795,13 @@ function openAddPhoneDialog() {
 
 function openEditPhoneDialog(phone: ServiceLocationPhone) {
   editingPhone.value = phone;
-  phoneForm.value = { ...phone };
+  phoneForm.value = {
+    label: phone.label,
+    phone_number: phone.phone_number,
+    extension: phone.extension || '',
+    is_primary: phone.is_primary,
+    is_public: phone.is_public,
+  };
   showPhoneDialog.value = true;
 }
 

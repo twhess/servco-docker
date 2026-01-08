@@ -142,10 +142,9 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { usePartsRequestsStore } from 'src/stores/partsRequests'
+import { usePartsRequestsStore, type PartsRequest } from 'src/stores/partsRequests'
 import { useAuthStore } from 'src/stores/auth'
 import { useQuasar } from 'quasar'
-import type { PartsRequest } from 'src/types/partsRequests'
 
 const partsRequestsStore = usePartsRequestsStore()
 const authStore = useAuthStore()

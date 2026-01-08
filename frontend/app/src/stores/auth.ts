@@ -44,6 +44,7 @@ interface RegisterData {
   phone_number?: string;
   pin_code?: string;
   home_shop?: string;
+  home_location_id?: number | null;
   personal_email?: string;
   slack_id?: string;
   dext_email?: string;

@@ -33,6 +33,9 @@ export interface PartsRequest {
   pickup_run: boolean;
   slack_notify_pickup: boolean;
   slack_notify_delivery: boolean;
+  vendor_order_number?: string | null;
+  created_by?: { id: number; name: string };
+  origin_location_id?: number | null;
   created_at: string;
   updated_at: string;
   // Parts Runner routing fields
