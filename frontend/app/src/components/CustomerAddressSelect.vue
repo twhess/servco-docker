@@ -204,12 +204,12 @@ import type { Address } from 'src/types/vendors';
 
 interface AddressOption {
   id: number;
-  label: string | null;
+  label: string | null | undefined;
   oneLine: string;
   displayLabel: string;
   isPrimary: boolean;
-  instructions?: string | null;
-  phone?: string | null;
+  instructions?: string | null | undefined;
+  phone?: string | null | undefined;
   addressType: string;
 }
 
@@ -416,14 +416,14 @@ const submitAddress = async () => {
   try {
     const customer = await customersStore.attachAddress(props.customerId, {
       address: {
-        label: newAddress.value.label || undefined,
+        label: newAddress.value.label || null,
         line1: newAddress.value.line1,
-        line2: newAddress.value.line2 || undefined,
+        line2: newAddress.value.line2 || null,
         city: newAddress.value.city,
         state: newAddress.value.state,
         postal_code: newAddress.value.postal_code,
-        phone: newAddress.value.phone || undefined,
-        instructions: newAddress.value.instructions || undefined,
+        phone: newAddress.value.phone || null,
+        instructions: newAddress.value.instructions || null,
       },
       address_type: newAddress.value.address_type,
       is_primary: newAddress.value.is_primary,
@@ -434,9 +434,11 @@ const submitAddress = async () => {
     // Select the newly created address
     if (customer.addresses && customer.addresses.length > 0) {
       const newAddr = customer.addresses[customer.addresses.length - 1];
-      emit('update:modelValue', newAddr.id);
-      emit('address-created', newAddr);
-      emit('address-selected', newAddr);
+      if (newAddr) {
+        emit('update:modelValue', newAddr.id);
+        emit('address-created', newAddr);
+        emit('address-selected', newAddr);
+      }
     }
   } finally {
     saving.value = false;
