@@ -107,38 +107,42 @@ async function loadRoute() {
   loading.value = true
   try {
     route.value = await routesStore.fetchRoute(routeId.value)
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as { message?: string }
     $q.notify({
       type: 'negative',
-      message: error.message || 'Failed to load route',
+      message: err.message || 'Failed to load route',
     })
   } finally {
     loading.value = false
   }
 }
 
-async function refreshRoute() {
-  await loadRoute()
+function refreshRoute() {
+  void loadRoute()
 }
 
-async function rebuildCache() {
+function rebuildCache() {
   $q.dialog({
     title: 'Rebuild Route Cache',
     message: 'This will recalculate all routing paths. This may take a few moments. Continue?',
     cancel: true,
-  }).onOk(async () => {
-    try {
-      await routesStore.rebuildCache()
-      $q.notify({
-        type: 'positive',
-        message: 'Route cache rebuilt successfully',
-      })
-    } catch (error: any) {
-      $q.notify({
-        type: 'negative',
-        message: error.message || 'Failed to rebuild cache',
-      })
-    }
+  }).onOk(() => {
+    void (async () => {
+      try {
+        await routesStore.rebuildCache()
+        $q.notify({
+          type: 'positive',
+          message: 'Route cache rebuilt successfully',
+        })
+      } catch (error: unknown) {
+        const err = error as { message?: string }
+        $q.notify({
+          type: 'negative',
+          message: err.message || 'Failed to rebuild cache',
+        })
+      }
+    })()
   })
 }
 

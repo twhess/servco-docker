@@ -34,7 +34,7 @@
         <q-icon :name="icon || 'store'" />
       </template>
 
-      <template v-slot:selected-item="scope">
+      <template v-slot:selected-item>
         <span v-if="currentDisplayName">{{ currentDisplayName }}</span>
       </template>
 
@@ -210,7 +210,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
 import { useVendorsStore } from 'src/stores/vendors';
-import type { Vendor, VendorDuplicateCandidate, VendorSearchResult } from 'src/types/vendors';
+import type { Vendor, VendorDuplicateCandidate } from 'src/types/vendors';
 import { detectAcronym } from 'src/composables/useAcronymDetector';
 
 interface SelectOption {
@@ -251,7 +251,7 @@ const emit = defineEmits<{
 }>();
 
 const vendorsStore = useVendorsStore();
-const selectRef = ref<any>(null);
+const selectRef = ref<InstanceType<typeof import('quasar').QSelect> | null>(null);
 
 const inputValue = ref('');
 // Initialize with prop value if provided
@@ -312,7 +312,7 @@ watch(() => props.modelValue, async (newValue) => {
 const filterVendors = async (
   val: string,
   update: (fn: () => void) => void,
-  abort: () => void
+  _abort: () => void
 ) => {
   if (val.length < 1) {
     update(() => {

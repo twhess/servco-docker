@@ -690,7 +690,7 @@ registerField('phone', [
 // Watch showInactive to update filters
 watch(showInactive, (val) => {
   filters.value.status = val ? null : 'active';
-  fetchVendors();
+  void fetchVendors();
 });
 
 function getPrimaryAddress(vendor: Vendor): Address | undefined {
@@ -698,7 +698,7 @@ function getPrimaryAddress(vendor: Vendor): Address | undefined {
 }
 
 async function fetchVendors() {
-  const params: Record<string, any> = {
+  const params: Record<string, string | number | null> = {
     page: pagination.value.page,
     per_page: pagination.value.rowsPerPage,
   };
@@ -711,7 +711,7 @@ async function fetchVendors() {
 }
 
 const debouncedFetch = debounce(() => {
-  fetchVendors();
+  void fetchVendors();
 }, 500);
 
 const debouncedDuplicateCheck = debounce(async () => {
@@ -767,10 +767,10 @@ function rejectAcronymSuggestion() {
   showAcronymPrompt.value = false;
 }
 
-function onTableRequest(props: any) {
+function onTableRequest(props: { pagination: { page: number; rowsPerPage: number } }) {
   pagination.value.page = props.pagination.page;
   pagination.value.rowsPerPage = props.pagination.rowsPerPage;
-  fetchVendors();
+  void fetchVendors();
 }
 
 function openCreateDialog() {
@@ -814,7 +814,7 @@ async function openViewDialog(vendor: Vendor) {
 
 function selectExistingVendor(candidate: VendorDuplicateCandidate) {
   showCreateDialog.value = false;
-  vendorsStore.fetchVendor(candidate.id).then(vendor => {
+  void vendorsStore.fetchVendor(candidate.id).then(vendor => {
     viewingVendor.value = vendor;
     showViewDialog.value = true;
   });
@@ -928,7 +928,7 @@ async function removeAddress(vendor: Vendor, address: Address) {
   await fetchVendors();
 }
 
-onMounted(async () => {
-  await fetchVendors();
+onMounted(() => {
+  void fetchVendors();
 });
 </script>

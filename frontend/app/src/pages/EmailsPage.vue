@@ -252,7 +252,7 @@ const downloadingAttachment = ref<string | null>(null);
 const downloadingAll = ref(false);
 
 watch(showAttachmentsOnly, () => {
-  fetchEmails();
+  void fetchEmails();
 });
 
 function isUnread(email: Email): boolean {
@@ -329,7 +329,7 @@ async function openEmailDialog(email: Email) {
 
   // Mark as read
   if (isUnread(email)) {
-    emailsStore.markAsRead(email.id);
+    void emailsStore.markAsRead(email.id);
   }
 }
 

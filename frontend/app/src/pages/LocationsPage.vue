@@ -489,8 +489,8 @@ const pagination = ref({
 const locationForm = ref<Partial<ServiceLocation>>({
   name: '',
   code: '',
-  location_type: 'fixed_shop' as any,
-  status: 'available' as any,
+  location_type: 'fixed_shop' as ServiceLocation['location_type'],
+  status: 'available' as ServiceLocation['status'],
   is_active: true,
   is_dispatchable: false,
   address_line1: '',
@@ -588,7 +588,7 @@ function formatDateTime(dateString: string): string {
 }
 
 async function fetchLocations() {
-  const params: any = {
+  const params: Record<string, string | number | boolean | null> = {
     page: pagination.value.page,
     per_page: pagination.value.rowsPerPage,
     active: !showInactive.value,
@@ -612,18 +612,18 @@ async function fetchLocations() {
 }
 
 const debouncedSearch = debounce(() => {
-  fetchLocations();
+  void fetchLocations();
 }, 500);
 
 function handleTabChange() {
   pagination.value.page = 1;
-  fetchLocations();
+  void fetchLocations();
 }
 
-function onTableRequest(props: any) {
+function onTableRequest(props: { pagination: { page: number; rowsPerPage: number } }) {
   pagination.value.page = props.pagination.page;
   pagination.value.rowsPerPage = props.pagination.rowsPerPage;
-  fetchLocations();
+  void fetchLocations();
 }
 
 function openCreateDialog() {
@@ -631,8 +631,8 @@ function openCreateDialog() {
   locationForm.value = {
     name: '',
     code: '',
-    location_type: 'fixed_shop' as any,
-    status: 'available' as any,
+    location_type: 'fixed_shop' as ServiceLocation['location_type'],
+    status: 'available' as ServiceLocation['status'],
     is_active: true,
     is_dispatchable: false,
     address_line1: '',
@@ -662,8 +662,8 @@ async function saveLocation() {
       await locationsStore.createLocation(locationForm.value);
     }
     showLocationDialog.value = false;
-    fetchLocations();
-  } catch (error) {
+    void fetchLocations();
+  } catch {
     // Error handled by store
   }
 }
@@ -672,7 +672,7 @@ async function toggleActive(location: ServiceLocation) {
   await locationsStore.updateLocation(location.id, {
     is_active: !location.is_active,
   });
-  fetchLocations();
+  void fetchLocations();
 }
 
 function openAssignDialog(location: ServiceLocation) {
@@ -686,20 +686,22 @@ function confirmDelete(location: ServiceLocation) {
     message: `Are you sure you want to delete "${location.name}"?`,
     cancel: true,
     persistent: true,
-  }).onOk(async () => {
-    await locationsStore.deleteLocation(location.id);
-    fetchLocations();
+  }).onOk(() => {
+    void (async () => {
+      await locationsStore.deleteLocation(location.id);
+      void fetchLocations();
+    })();
   });
 }
 
 async function loadFixedShops() {
-  const response = await locationsStore.fetchLocations({ type: 'fixed_shop', per_page: 100 });
+  await locationsStore.fetchLocations({ type: 'fixed_shop', per_page: 100 });
   fixedShops.value = locationsStore.locations;
 }
 
 onMounted(() => {
-  fetchLocations();
-  loadFixedShops();
+  void fetchLocations();
+  void loadFixedShops();
 });
 </script>
 

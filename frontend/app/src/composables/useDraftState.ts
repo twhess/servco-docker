@@ -6,7 +6,7 @@ export interface DraftOptions {
   excludeFields?: string[];
 }
 
-export function useDraftState<T extends Record<string, any>>(
+export function useDraftState<T extends Record<string, unknown>>(
   formData: T,
   options: DraftOptions
 ) {
@@ -22,7 +22,7 @@ export function useDraftState<T extends Record<string, any>>(
    */
   const saveDraft = () => {
     try {
-      const dataToSave: Record<string, any> = {};
+      const dataToSave: Record<string, unknown> = {};
 
       // Only save fields that aren't excluded
       Object.keys(formData).forEach((field) => {
@@ -68,9 +68,9 @@ export function useDraftState<T extends Record<string, any>>(
       const draft = JSON.parse(stored);
 
       // Restore form data
-      Object.keys(draft.data).forEach((field) => {
+      Object.keys(draft.data as Record<string, unknown>).forEach((field) => {
         if (field in formData) {
-          (formData as any)[field] = draft.data[field];
+          (formData as Record<string, unknown>)[field] = (draft.data as Record<string, unknown>)[field];
         }
       });
 
@@ -109,7 +109,7 @@ export function useDraftState<T extends Record<string, any>>(
         return true;
       }
       return false;
-    } catch (error) {
+    } catch {
       return false;
     }
   };

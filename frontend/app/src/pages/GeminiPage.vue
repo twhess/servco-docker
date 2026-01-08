@@ -522,7 +522,7 @@ const csvPreviewColumns = computed(() => {
 const csvPreviewRows = computed(() => {
   if (!geminiStore.csvContent?.rows) return [];
   // Handle both array and object rows
-  return geminiStore.csvContent.rows.map((row, index) => {
+  return geminiStore.csvContent.rows.map((row) => {
     if (Array.isArray(row)) {
       // Convert array to object using headers
       const obj: Record<string, string> = {};
@@ -612,7 +612,7 @@ function onSearchInput(value: string | number | null) {
   const searchValue = String(value ?? '');
   if (searchValue && searchValue.length >= 2) {
     searchTimeout = setTimeout(() => {
-      doFolderSearch();
+      void doFolderSearch();
     }, 300);
   } else {
     geminiStore.clearSearch();

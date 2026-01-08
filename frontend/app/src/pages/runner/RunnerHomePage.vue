@@ -257,9 +257,9 @@ const fetchCurrentVehicle = async () => {
   }
 };
 
-const onVehicleSelected = (vehicle: { sessionId: number; isGeneric: boolean; vehicleName: string }) => {
+const onVehicleSelected = (_vehicle: { sessionId: number; isGeneric: boolean; vehicleName: string }) => {
   // Refresh the current vehicle display
-  fetchCurrentVehicle();
+  void fetchCurrentVehicle();
 };
 
 const selectRun = async (runId: number) => {

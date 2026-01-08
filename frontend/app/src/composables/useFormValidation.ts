@@ -1,12 +1,12 @@
 import { ref, computed, nextTick } from 'vue';
 
 export interface ValidationRule {
-  validate: (value: any) => boolean;
+  validate: (value: unknown) => boolean;
   message: string;
 }
 
 export interface FieldValidation {
-  value: any;
+  value: unknown;
   rules: ValidationRule[];
   touched: boolean;
   error: string | null;
@@ -32,7 +32,7 @@ export function useFormValidation() {
   /**
    * Update field value
    */
-  const updateField = (name: string, value: any) => {
+  const updateField = (name: string, value: unknown) => {
     const field = fields.value.get(name);
     if (field) {
       field.value = value;
@@ -107,7 +107,7 @@ export function useFormValidation() {
 
     if (firstErrorField) {
       // Find the element with data-field-name attribute
-      const element = document.querySelector(`[data-field-name="${firstErrorField}"]`);
+      const element = document.querySelector(`[data-field-name="${String(firstErrorField)}"]`);
       if (element) {
         element.scrollIntoView({
           behavior: 'smooth',
@@ -225,8 +225,8 @@ export const validationRules = {
   phone: (message = 'Please enter a valid phone number'): ValidationRule => ({
     validate: (value) => {
       if (!value) return true;
-      const phoneRegex = /^[\d\s\-\(\)\+]+$/;
-      return phoneRegex.test(value) && value.replace(/\D/g, '').length >= 10;
+      const phoneRegex = /^[\d\s\-()+]+$/;
+      return typeof value === 'string' && phoneRegex.test(value) && value.replace(/\D/g, '').length >= 10;
     },
     message,
   }),
@@ -263,7 +263,7 @@ export const validationRules = {
     message: message || `Must be no more than ${max}`,
   }),
 
-  custom: (validationFn: (value: any) => boolean, message: string): ValidationRule => ({
+  custom: (validationFn: (value: unknown) => boolean, message: string): ValidationRule => ({
     validate: validationFn,
     message,
   }),

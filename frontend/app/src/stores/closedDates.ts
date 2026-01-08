@@ -60,8 +60,9 @@ export const useClosedDatesStore = defineStore('closedDates', {
         const response = await api.get('/closed-dates', { params })
         this.closedDates = response.data.data
         return this.closedDates
-      } catch (error: any) {
-        this.error = error.response?.data?.message || 'Failed to fetch closed dates'
+      } catch (error: unknown) {
+        const err = error as { response?: { data?: { message?: string } } }
+        this.error = err.response?.data?.message || 'Failed to fetch closed dates'
         throw error
       } finally {
         this.loading = false
@@ -77,8 +78,9 @@ export const useClosedDatesStore = defineStore('closedDates', {
         this.closedDates.push(newDate)
         this.closedDates.sort((a, b) => a.date.localeCompare(b.date))
         return newDate
-      } catch (error: any) {
-        this.error = error.response?.data?.message || 'Failed to create closed date'
+      } catch (error: unknown) {
+        const err = error as { response?: { data?: { message?: string } } }
+        this.error = err.response?.data?.message || 'Failed to create closed date'
         throw error
       } finally {
         this.loading = false
@@ -102,8 +104,9 @@ export const useClosedDatesStore = defineStore('closedDates', {
         this.closedDates.sort((a, b) => a.date.localeCompare(b.date))
 
         return updated
-      } catch (error: any) {
-        this.error = error.response?.data?.message || 'Failed to update closed date'
+      } catch (error: unknown) {
+        const err = error as { response?: { data?: { message?: string } } }
+        this.error = err.response?.data?.message || 'Failed to update closed date'
         throw error
       } finally {
         this.loading = false
@@ -116,8 +119,9 @@ export const useClosedDatesStore = defineStore('closedDates', {
       try {
         await api.delete(`/closed-dates/${id}`)
         this.closedDates = this.closedDates.filter((d) => d.id !== id)
-      } catch (error: any) {
-        this.error = error.response?.data?.message || 'Failed to delete closed date'
+      } catch (error: unknown) {
+        const err = error as { response?: { data?: { message?: string } } }
+        this.error = err.response?.data?.message || 'Failed to delete closed date'
         throw error
       } finally {
         this.loading = false
@@ -125,12 +129,8 @@ export const useClosedDatesStore = defineStore('closedDates', {
     },
 
     async checkDate(date: string): Promise<{ is_closed: boolean; closed_date: ClosedDate | null }> {
-      try {
-        const response = await api.get('/closed-dates/check', { params: { date } })
-        return response.data
-      } catch (error: any) {
-        throw error
-      }
+      const response = await api.get('/closed-dates/check', { params: { date } })
+      return response.data
     },
 
     clearError() {

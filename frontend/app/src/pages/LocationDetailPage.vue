@@ -634,14 +634,14 @@ const showAssignDialog = ref(false);
 const editingPhone = ref<ServiceLocationPhone | null>(null);
 const editingEmail = ref<ServiceLocationEmail | null>(null);
 const fixedShops = ref<ServiceLocation[]>([]);
-const availableUsers = ref<any[]>([]);
+const availableUsers = ref<{ id: number; full_name: string; first_name?: string; last_name?: string; username: string }[]>([]);
 const selectedUserId = ref<number | null>(null);
 
 const locationForm = ref<Partial<ServiceLocation>>({
   name: '',
   code: '',
-  location_type: 'fixed_shop' as any,
-  status: 'available' as any,
+  location_type: 'fixed_shop' as ServiceLocation['location_type'],
+  status: 'available' as ServiceLocation['status'],
   is_active: true,
   is_dispatchable: false,
   address_line1: '',
@@ -761,7 +761,7 @@ async function saveLocation() {
     await locationsStore.updateLocation(location.value.id, locationForm.value);
     showEditDialog.value = false;
     await fetchLocation();
-  } catch (error) {
+  } catch {
     // Error handled by store
   }
 }
@@ -773,10 +773,12 @@ function confirmDelete() {
     message: `Are you sure you want to delete "${location.value.name}"?`,
     cancel: true,
     persistent: true,
-  }).onOk(async () => {
-    if (!location.value) return;
-    await locationsStore.deleteLocation(location.value.id);
-    router.push('/locations');
+  }).onOk(() => {
+    void (async () => {
+      if (!location.value) return;
+      await locationsStore.deleteLocation(location.value.id);
+      router.push('/locations');
+    })();
   });
 }
 
@@ -815,7 +817,7 @@ async function savePhone() {
     }
     showPhoneDialog.value = false;
     await fetchLocation();
-  } catch (error) {
+  } catch {
     // Error handled by store
   }
 }
@@ -827,10 +829,12 @@ function confirmDeletePhone(phone: ServiceLocationPhone) {
     message: `Are you sure you want to delete this phone number?`,
     cancel: true,
     persistent: true,
-  }).onOk(async () => {
-    if (!location.value) return;
-    await locationsStore.deletePhone(location.value.id, phone.id);
-    await fetchLocation();
+  }).onOk(() => {
+    void (async () => {
+      if (!location.value) return;
+      await locationsStore.deletePhone(location.value.id, phone.id);
+      await fetchLocation();
+    })();
   });
 }
 
@@ -862,7 +866,7 @@ async function saveEmail() {
     }
     showEmailDialog.value = false;
     await fetchLocation();
-  } catch (error) {
+  } catch {
     // Error handled by store
   }
 }
@@ -874,10 +878,12 @@ function confirmDeleteEmail(email: ServiceLocationEmail) {
     message: `Are you sure you want to delete this email address?`,
     cancel: true,
     persistent: true,
-  }).onOk(async () => {
-    if (!location.value) return;
-    await locationsStore.deleteEmail(location.value.id, email.id);
-    await fetchLocation();
+  }).onOk(() => {
+    void (async () => {
+      if (!location.value) return;
+      await locationsStore.deleteEmail(location.value.id, email.id);
+      await fetchLocation();
+    })();
   });
 }
 
@@ -897,7 +903,7 @@ async function assignUser() {
     await locationsStore.assignUser(location.value.id, selectedUserId.value);
     showAssignDialog.value = false;
     await fetchLocation();
-  } catch (error) {
+  } catch {
     // Error handled by store
   }
 }
@@ -914,7 +920,7 @@ async function loadFixedShops() {
 async function loadAvailableUsers() {
   try {
     const response = await api.get('/users', { params: { per_page: 100 } });
-    availableUsers.value = response.data.data.map((user: any) => ({
+    availableUsers.value = response.data.data.map((user: { id: number; first_name?: string; last_name?: string; username: string }) => ({
       ...user,
       full_name: `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username,
     }));

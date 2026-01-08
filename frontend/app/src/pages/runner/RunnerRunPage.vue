@@ -448,14 +448,16 @@ watch(selectedStopId, (stopId) => {
   void itemsStore.fetchItems(runId.value, stopId === 'all' ? null : stopId);
 });
 
-onMounted(async () => {
-  await runsStore.fetchRunDetails(runId.value);
-  await itemsStore.fetchItems(runId.value);
+onMounted(() => {
+  void (async () => {
+    await runsStore.fetchRunDetails(runId.value);
+    await itemsStore.fetchItems(runId.value);
 
-  // Start location tracking if run is in progress
-  if (runsStore.currentRun?.status === 'in_progress') {
-    locationStore.startWatching(runId.value);
-  }
+    // Start location tracking if run is in progress
+    if (runsStore.currentRun?.status === 'in_progress') {
+      locationStore.startWatching(runId.value);
+    }
+  })();
 });
 
 onUnmounted(() => {

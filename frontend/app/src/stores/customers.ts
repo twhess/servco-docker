@@ -12,7 +12,7 @@ import type {
   MergeComparisonData,
   MergeSummary,
 } from 'src/types/customers'
-import type { Address, VendorAddressAttachRequest } from 'src/types/vendors'
+import type { VendorAddressAttachRequest } from 'src/types/vendors'
 
 interface CustomerCreateResponse {
   status: 'created' | 'duplicates_found'

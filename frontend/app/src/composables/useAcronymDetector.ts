@@ -29,7 +29,7 @@ export function detectAcronym(name: string): AcronymDetectionResult {
   }
 
   // Clean the name: remove periods, spaces, and common punctuation for analysis
-  const cleaned = trimmed.replace(/[\.\s\-\_\/\\,]+/g, '')
+  const cleaned = trimmed.replace(/[.\s\-_/\\,]+/g, '')
 
   // Check length - acronyms are typically 2-6 characters
   const length = cleaned.length
@@ -127,7 +127,7 @@ export function detectAcronym(name: string): AcronymDetectionResult {
 export function formatVendorName(name: string, isAcronym: boolean): string {
   if (isAcronym) {
     // Remove periods and convert to uppercase
-    const cleaned = name.replace(/[\.\s]+/g, '')
+    const cleaned = name.replace(/[.\s]+/g, '')
     return cleaned.toUpperCase()
   }
 

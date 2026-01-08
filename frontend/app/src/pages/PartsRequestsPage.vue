@@ -1206,8 +1206,8 @@ const viewingRequest = ref<PartsRequest | null>(null);
 const timeline = ref<PartsRequestEvent[]>([]);
 const photos = ref<PartsRequestPhoto[]>([]);
 
-const runners = ref<any[]>([]);
-const locations = ref<any[]>([]);
+const runners = ref<{ id: number; name: string; role: string }[]>([]);
+const locations = ref<{ id: number; name: string }[]>([]);
 
 // Vendor selection state
 const selectedVendor = ref<Vendor | null>(null);
@@ -1412,14 +1412,14 @@ function handleVendorCreated(vendor: Vendor) {
   requestForm.vendor_name = '';
 }
 
-function handleAddressSelected(address: Address | null) {
+function handleAddressSelected(_address: Address | null) {
   // Address selection is handled via v-model, this is for additional logic if needed
 }
 
-function handleAddressCreated(address: Address) {
+function handleAddressCreated(_address: Address) {
   // Refresh vendor to get updated addresses
   if (requestForm.vendor_id) {
-    vendorsStore.fetchVendor(requestForm.vendor_id).then(vendor => {
+    void vendorsStore.fetchVendor(requestForm.vendor_id).then(vendor => {
       selectedVendor.value = vendor;
     });
   }
@@ -1453,17 +1453,17 @@ function handleCustomerAddressSelected(address: Address | null) {
   }
 }
 
-function handleCustomerAddressCreated(address: Address) {
+function handleCustomerAddressCreated(_address: Address) {
   // Refresh customer to get updated addresses
   if (requestForm.customer_id) {
-    customersStore.fetchCustomer(requestForm.customer_id).then(customer => {
+    void customersStore.fetchCustomer(requestForm.customer_id).then(customer => {
       selectedCustomer.value = customer;
     });
   }
 }
 
 // Get button style for a location based on its colors and selection state
-function getLocationButtonStyle(location: any, isSelected: boolean): Record<string, string> {
+function getLocationButtonStyle(location: { background_color?: string | null; text_color?: string | null }, isSelected: boolean): Record<string, string> {
   const style: Record<string, string> = {};
 
   if (isSelected) {
@@ -1596,9 +1596,10 @@ const columns = [
   { name: 'requested_by', label: 'Requested By', field: 'requested_by', align: 'left' as const },
 ];
 
-function can(ability: string): boolean {
-  return authStore.can(ability);
-}
+// Permission check helper - currently unused but kept for future use
+// function can(ability: string): boolean {
+//   return authStore.can(ability);
+// }
 
 function getTypeLabel(type: string): string {
   const labels: Record<string, string> = {
@@ -1841,7 +1842,7 @@ function removePendingImageFromCarousel() {
 }
 
 async function fetchRequests() {
-  const params: any = {
+  const params: Record<string, string | number | boolean | null> = {
     page: pagination.value.page,
     per_page: pagination.value.rowsPerPage,
   };
@@ -1859,13 +1860,13 @@ async function fetchRequests() {
 }
 
 const debouncedFetch = debounce(() => {
-  fetchRequests();
+  void fetchRequests();
 }, 500);
 
-function onTableRequest(props: any) {
+function onTableRequest(props: { pagination: { page: number; rowsPerPage: number } }) {
   pagination.value.page = props.pagination.page;
   pagination.value.rowsPerPage = props.pagination.rowsPerPage;
-  fetchRequests();
+  void fetchRequests();
 }
 
 function onRowClick(evt: Event, row: PartsRequest) {
@@ -1971,11 +1972,12 @@ async function submitCreateForm() {
   });
 }
 
-function openAssignDialog(request: PartsRequest) {
-  selectedRequest.value = request;
-  selectedRunnerId.value = null;
-  showAssignDialog.value = true;
-}
+// Open assign dialog - currently unused but kept for future use
+// function openAssignDialog(request: PartsRequest) {
+//   selectedRequest.value = request;
+//   selectedRunnerId.value = null;
+//   showAssignDialog.value = true;
+// }
 
 async function assignRunner() {
   if (!selectedRequest.value || !selectedRunnerId.value) return;
@@ -1983,20 +1985,21 @@ async function assignRunner() {
   try {
     await partsRequestsStore.assignRunner(selectedRequest.value.id, selectedRunnerId.value);
     showAssignDialog.value = false;
-    fetchRequests();
-  } catch (error) {
+    void fetchRequests();
+  } catch {
     // Error handled by store
   }
 }
 
-async function unassignRunner(request: PartsRequest) {
-  try {
-    await partsRequestsStore.unassignRunner(request.id);
-    fetchRequests();
-  } catch (error) {
-    // Error handled by store
-  }
-}
+// Unassign runner - currently unused but kept for future use
+// async function unassignRunner(request: PartsRequest) {
+//   try {
+//     await partsRequestsStore.unassignRunner(request.id);
+//     void fetchRequests();
+//   } catch {
+//     // Error handled by store
+//   }
+// }
 
 async function viewRequest(request: PartsRequest) {
   // Reset expansion states and counts
@@ -2041,21 +2044,22 @@ function onNotesCountChanged(count: number) {
   if (count > 0) notesExpanded.value = true;
 }
 
-async function openDocuments(request: PartsRequest) {
-  // Opens same view dialog - documents are now on the same page
-  viewingRequest.value = await partsRequestsStore.fetchRequest(request.id);
-  showViewDialog.value = true;
-}
+// Open documents - currently unused, documents shown in view dialog
+// async function openDocuments(request: PartsRequest) {
+//   viewingRequest.value = await partsRequestsStore.fetchRequest(request.id);
+//   showViewDialog.value = true;
+// }
 
 async function viewTimeline(request: PartsRequest) {
   timeline.value = await partsRequestsStore.fetchTimeline(request.id);
   showTimelineDialog.value = true;
 }
 
-async function viewPhotos(request: PartsRequest) {
-  photos.value = await partsRequestsStore.fetchPhotos(request.id);
-  showPhotosDialog.value = true;
-}
+// View photos - currently unused, photos shown in view dialog
+// async function viewPhotos(request: PartsRequest) {
+//   photos.value = await partsRequestsStore.fetchPhotos(request.id);
+//   showPhotosDialog.value = true;
+// }
 
 /**
  * Auto-assign request to next available run
@@ -2134,7 +2138,7 @@ async function handleSaturdayChoice(useSaturday: boolean) {
 async function loadRunners() {
   try {
     const response = await api.get('/users', { params: { active: true } });
-    runners.value = response.data.filter((u: any) => u.role === 'runner_driver');
+    runners.value = response.data.filter((u: { id: number; name: string; role: string }) => u.role === 'runner_driver');
   } catch (error) {
     console.error('Failed to load runners', error);
   }

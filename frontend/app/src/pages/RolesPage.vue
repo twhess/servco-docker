@@ -418,10 +418,11 @@ async function fetchRoles() {
       params: { include_inactive: showInactive.value },
     });
     roles.value = response.data;
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as { response?: { data?: { message?: string } } }
     $q.notify({
       type: 'negative',
-      message: error.response?.data?.message || 'Failed to load roles',
+      message: err.response?.data?.message || 'Failed to load roles',
     });
   } finally {
     loading.value = false;
@@ -432,10 +433,11 @@ async function fetchPermissions() {
   try {
     const response = await api.get('/permissions');
     permissions.value = response.data;
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as { response?: { data?: { message?: string } } }
     $q.notify({
       type: 'negative',
-      message: error.response?.data?.message || 'Failed to load permissions',
+      message: err.response?.data?.message || 'Failed to load permissions',
     });
   }
 }
@@ -501,10 +503,11 @@ async function saveRole() {
 
     showRoleDialog.value = false;
     await fetchRoles();
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as { response?: { data?: { message?: string } } }
     $q.notify({
       type: 'negative',
-      message: error.response?.data?.message || 'Failed to save role',
+      message: err.response?.data?.message || 'Failed to save role',
     });
   } finally {
     saving.value = false;
@@ -521,10 +524,11 @@ async function toggleActive(role: Role) {
       message: 'Role status updated',
     });
     await fetchRoles();
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as { response?: { data?: { message?: string } } }
     $q.notify({
       type: 'negative',
-      message: error.response?.data?.message || 'Failed to update role',
+      message: err.response?.data?.message || 'Failed to update role',
     });
   }
 }
@@ -535,20 +539,23 @@ function confirmDelete(role: Role) {
     message: `Are you sure you want to delete the role "${role.display_name}"? This action cannot be undone.`,
     cancel: true,
     persistent: true,
-  }).onOk(async () => {
-    try {
-      await api.delete(`/roles/${role.id}`);
-      $q.notify({
-        type: 'positive',
-        message: 'Role deleted successfully',
-      });
-      await fetchRoles();
-    } catch (error: any) {
-      $q.notify({
-        type: 'negative',
-        message: error.response?.data?.message || 'Failed to delete role',
-      });
-    }
+  }).onOk(() => {
+    void (async () => {
+      try {
+        await api.delete(`/roles/${role.id}`);
+        $q.notify({
+          type: 'positive',
+          message: 'Role deleted successfully',
+        });
+        await fetchRoles();
+      } catch (error: unknown) {
+        const err = error as { response?: { data?: { message?: string } } }
+        $q.notify({
+          type: 'negative',
+          message: err.response?.data?.message || 'Failed to delete role',
+        });
+      }
+    })();
   });
 }
 

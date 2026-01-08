@@ -254,10 +254,11 @@ async function saveClosedDate() {
       })
     }
     closeDialog()
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as { response?: { data?: { message?: string } } }
     $q.notify({
       type: 'negative',
-      message: error.response?.data?.message || 'Failed to save closed date',
+      message: err.response?.data?.message || 'Failed to save closed date',
     })
   }
 }

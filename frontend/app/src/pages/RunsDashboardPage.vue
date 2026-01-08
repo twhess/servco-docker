@@ -771,8 +771,8 @@ const requestColumns = [
   { name: 'status', label: 'Status', field: 'status', align: 'center' as const },
 ]
 
-onMounted(async () => {
-  await Promise.all([loadRuns(), routesStore.fetchRoutes(), loadUsers()])
+onMounted(() => {
+  void Promise.all([loadRuns(), routesStore.fetchRoutes(), loadUsers()])
 })
 
 async function loadUsers() {
@@ -788,7 +788,7 @@ watch(selectedDate, async () => {
   await loadRuns()
 })
 
-function onRowClick(evt: Event, row: RunInstance) {
+function onRowClick(_evt: Event, row: RunInstance) {
   viewRunDetails(row)
 }
 
@@ -797,10 +797,11 @@ async function loadRuns() {
   try {
     const dateFilter = selectedDate.value || undefined
     await runsStore.fetchRuns(dateFilter ? { date: dateFilter } : {})
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as { message?: string }
     $q.notify({
       type: 'negative',
-      message: error.message || 'Failed to load runs',
+      message: err.message || 'Failed to load runs',
     })
   } finally {
     loading.value = false
@@ -836,10 +837,11 @@ async function createOnDemandRun() {
     })
     showOnDemandDialog.value = false
     await loadRuns()
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as { response?: { data?: { message?: string } } }
     $q.notify({
       type: 'negative',
-      message: error.response?.data?.message || 'Failed to create on-demand run',
+      message: err.response?.data?.message || 'Failed to create on-demand run',
     })
   } finally {
     creatingRun.value = false
@@ -880,10 +882,11 @@ async function mergeRuns() {
       await runsStore.fetchRun(mergeForm.target_run_id)
       selectedRun.value = runsStore.activeRun
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as { response?: { data?: { message?: string } } }
     $q.notify({
       type: 'negative',
-      message: error.response?.data?.message || 'Failed to merge runs',
+      message: err.response?.data?.message || 'Failed to merge runs',
     })
   } finally {
     mergingRuns.value = false
@@ -919,10 +922,11 @@ async function saveRunnerAssignment() {
       await runsStore.fetchRun(assignRunnerRun.value.id)
       selectedRun.value = runsStore.activeRun
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as { response?: { data?: { message?: string } } }
     $q.notify({
       type: 'negative',
-      message: error.response?.data?.message || 'Failed to assign runner',
+      message: err.response?.data?.message || 'Failed to assign runner',
     })
   } finally {
     assigningRunner.value = false
@@ -951,10 +955,11 @@ async function unassignRunner() {
     } catch (refreshError) {
       console.warn('Failed to refresh runs after unassign:', refreshError)
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as { response?: { data?: { message?: string } } }
     $q.notify({
       type: 'negative',
-      message: error.response?.data?.message || 'Failed to unassign runner',
+      message: err.response?.data?.message || 'Failed to unassign runner',
     })
   } finally {
     assigningRunner.value = false
@@ -966,10 +971,11 @@ async function viewRunDetails(run: RunInstance) {
     await runsStore.fetchRun(run.id)
     selectedRun.value = runsStore.activeRun
     showRunDetail.value = true
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as { message?: string }
     $q.notify({
       type: 'negative',
-      message: error.message || 'Failed to load run details',
+      message: err.message || 'Failed to load run details',
     })
   }
 }
@@ -1014,17 +1020,8 @@ function getLastStopTime(run: RunInstance): string {
   return ''
 }
 
-function getProgressPercent(run: RunInstance): number {
-  if (!run.stop_actuals || run.stop_actuals.length === 0) return 0
-  const completed = run.stop_actuals.filter(s => s.departed_at).length
-  return completed / run.stop_actuals.length
-}
-
-function getProgressLabel(run: RunInstance): string {
-  if (!run.stop_actuals || run.stop_actuals.length === 0) return '0/0'
-  const completed = run.stop_actuals.filter(s => s.departed_at).length
-  return `${completed}/${run.stop_actuals.length}`
-}
+// Note: getProgressPercent and getProgressLabel were removed as they are unused
+// They can be re-added if stop-based progress display is needed
 
 // Request progress tracking functions
 function getRequestCount(run: RunInstance): number {
@@ -1044,16 +1041,24 @@ function getDeliveredCount(run: RunInstance): number {
   ).length
 }
 
-function isRequestCompleted(request: any): boolean {
+interface RequestWithStatus {
+  status?: { name?: string }
+  vendor?: { name?: string }
+  origin_location?: { name?: string }
+  receiving_location?: { name?: string }
+  customer?: { name?: string }
+}
+
+function isRequestCompleted(request: RequestWithStatus): boolean {
   return request.status?.name === 'delivered'
 }
 
 // Request table helper functions
-function getRequestRowClass(row: any): string {
+function getRequestRowClass(row: RequestWithStatus): string {
   return isRequestCompleted(row) ? 'is-completed' : ''
 }
 
-function getRequestOrigin(request: any): string {
+function getRequestOrigin(request: RequestWithStatus): string {
   if (request.vendor?.name) {
     return request.vendor.name
   }
@@ -1063,7 +1068,7 @@ function getRequestOrigin(request: any): string {
   return 'Unknown'
 }
 
-function getRequestDestination(request: any): string {
+function getRequestDestination(request: RequestWithStatus): string {
   if (request.receiving_location?.name) {
     return request.receiving_location.name
   }

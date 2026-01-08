@@ -189,7 +189,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
 import { useVendorsStore } from 'src/stores/vendors';
-import type { Address, Vendor } from 'src/types/vendors';
+import type { Address } from 'src/types/vendors';
 
 interface AddressOption {
   id: number;
@@ -401,7 +401,7 @@ const submitAddress = async () => {
       if (newAddr) {
         emit('update:modelValue', newAddr.id);
         emit('address-created', newAddr);
-        emit('address-selected', newAddr as Address);
+        emit('address-selected', newAddr);
       }
     }
   } finally {

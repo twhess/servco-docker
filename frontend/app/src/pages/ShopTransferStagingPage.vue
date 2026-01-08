@@ -164,12 +164,12 @@ const requests = computed(() => partsRequestsStore.requests.filter(r =>
   r.origin_location_id === authStore.user?.primary_location_id
 ))
 
-onMounted(async () => {
-  await loadRequests()
+onMounted(() => {
+  void loadRequests()
 
   // Auto-refresh every 60 seconds
   setInterval(() => {
-    loadRequests()
+    void loadRequests()
   }, 60000)
 })
 
@@ -178,10 +178,11 @@ async function loadRequests() {
   try {
     // Fetch all requests, then filter in computed property
     await partsRequestsStore.fetchRequests()
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as { message?: string }
     $q.notify({
       type: 'negative',
-      message: error.message || 'Failed to load requests',
+      message: err.message || 'Failed to load requests',
     })
   } finally {
     loading.value = false
@@ -221,10 +222,11 @@ async function confirmReady() {
 
     closeReadyDialog()
     await loadRequests()
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as { message?: string }
     $q.notify({
       type: 'negative',
-      message: error.message || 'Failed to mark as ready',
+      message: err.message || 'Failed to mark as ready',
     })
   } finally {
     executing.value = false
@@ -252,10 +254,11 @@ async function confirmNotAvailable() {
 
     closeNotAvailableDialog()
     await loadRequests()
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as { message?: string }
     $q.notify({
       type: 'negative',
-      message: error.message || 'Failed to mark as not available',
+      message: err.message || 'Failed to mark as not available',
     })
   } finally {
     executing.value = false

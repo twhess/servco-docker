@@ -760,11 +760,11 @@ registerField('phone', [
 
 watch(showInactive, (val) => {
   filters.value.status = val ? null : 'active'
-  fetchCustomers()
+  void fetchCustomers()
 })
 
 async function fetchCustomers() {
-  const params: Record<string, any> = {
+  const params: Record<string, string | number | null> = {
     page: pagination.value.page,
     per_page: pagination.value.rowsPerPage,
   }
@@ -780,7 +780,7 @@ async function fetchCustomers() {
 }
 
 const debouncedFetch = debounce(() => {
-  fetchCustomers()
+  void fetchCustomers()
 }, 500)
 
 const debouncedDuplicateCheck = debounce(async () => {
@@ -801,10 +801,10 @@ function checkForDuplicates() {
   debouncedDuplicateCheck()
 }
 
-function onTableRequest(props: any) {
+function onTableRequest(props: { pagination: { page: number; rowsPerPage: number } }) {
   pagination.value.page = props.pagination.page
   pagination.value.rowsPerPage = props.pagination.rowsPerPage
-  fetchCustomers()
+  void fetchCustomers()
 }
 
 function openCreateDialog() {
@@ -847,7 +847,7 @@ async function openViewDialog(customer: Customer) {
 
 function selectExistingCustomer(candidate: CustomerDuplicateCandidate) {
   showCreateDialog.value = false
-  customersStore.fetchCustomer(candidate.id).then(customer => {
+  void customersStore.fetchCustomer(candidate.id).then(customer => {
     viewingCustomer.value = customer
     showViewDialog.value = true
   })

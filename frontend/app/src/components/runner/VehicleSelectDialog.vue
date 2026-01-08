@@ -251,7 +251,7 @@ watch(() => props.modelValue, (isOpen) => {
     genericType.value = null;
     genericDescription.value = '';
     genericLicensePlate.value = '';
-    fetchVehicles();
+    void fetchVehicles();
   }
 });
 
@@ -265,7 +265,7 @@ watch(showGenericForm, (show) => {
 
 onMounted(() => {
   if (props.modelValue) {
-    fetchVehicles();
+    void fetchVehicles();
   }
 });
 </script>

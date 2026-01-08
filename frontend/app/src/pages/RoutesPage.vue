@@ -256,10 +256,11 @@ async function saveRoute() {
       })
     }
     closeDialog()
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as { message?: string }
     $q.notify({
       type: 'negative',
-      message: error.message || 'Failed to save route',
+      message: err.message || 'Failed to save route',
     })
   } finally {
     saving.value = false
@@ -285,10 +286,11 @@ async function activateRoute(route: Route) {
       type: 'positive',
       message: 'Route activated',
     })
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as { message?: string }
     $q.notify({
       type: 'negative',
-      message: error.message || 'Failed to activate route',
+      message: err.message || 'Failed to activate route',
     })
   }
 }
@@ -298,19 +300,22 @@ function deactivateRoute(route: Route) {
     title: 'Deactivate Route',
     message: `Are you sure you want to deactivate "${route.name}"? This will prevent new runs from being created.`,
     cancel: true,
-  }).onOk(async () => {
-    try {
-      await routesStore.deleteRoute(route.id)
-      $q.notify({
-        type: 'positive',
-        message: 'Route deactivated',
-      })
-    } catch (error: any) {
-      $q.notify({
-        type: 'negative',
-        message: error.message || 'Failed to deactivate route',
-      })
-    }
+  }).onOk(() => {
+    void (async () => {
+      try {
+        await routesStore.deleteRoute(route.id)
+        $q.notify({
+          type: 'positive',
+          message: 'Route deactivated',
+        })
+      } catch (error: unknown) {
+        const err = error as { message?: string }
+        $q.notify({
+          type: 'negative',
+          message: err.message || 'Failed to deactivate route',
+        })
+      }
+    })()
   })
 }
 </script>

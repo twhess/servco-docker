@@ -154,25 +154,28 @@ async function loadRuns() {
   loading.value = true
   try {
     await runsStore.fetchMyRuns(selectedDate.value)
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as { message?: string }
     $q.notify({
       type: 'negative',
-      message: error.message || 'Failed to load runs',
+      message: err.message || 'Failed to load runs',
     })
   } finally {
     loading.value = false
   }
 }
 
-async function refreshRuns() {
-  await loadRuns()
-  if (selectedRun.value) {
-    // Refresh selected run details
-    const updated = myRuns.value.find(r => r.id === selectedRun.value!.id)
-    if (updated) {
-      selectedRun.value = updated
+function refreshRuns() {
+  void (async () => {
+    await loadRuns()
+    if (selectedRun.value) {
+      // Refresh selected run details
+      const updated = myRuns.value.find(r => r.id === selectedRun.value!.id)
+      if (updated) {
+        selectedRun.value = updated
+      }
     }
-  }
+  })()
 }
 
 function selectRun(run: RunInstance) {
@@ -180,25 +183,28 @@ function selectRun(run: RunInstance) {
   showRunDetail.value = true
 }
 
-async function startRun(run: RunInstance) {
+function startRun(run: RunInstance) {
   $q.dialog({
     title: 'Start Run',
     message: `Start "${run.route?.name}" run?`,
     cancel: true,
-  }).onOk(async () => {
-    try {
-      await runsStore.startRun(run.id)
-      $q.notify({
-        type: 'positive',
-        message: 'Run started',
-      })
-      await refreshRuns()
-    } catch (error: any) {
-      $q.notify({
-        type: 'negative',
-        message: error.message || 'Failed to start run',
-      })
-    }
+  }).onOk(() => {
+    void (async () => {
+      try {
+        await runsStore.startRun(run.id)
+        $q.notify({
+          type: 'positive',
+          message: 'Run started',
+        })
+        refreshRuns()
+      } catch (error: unknown) {
+        const err = error as { message?: string }
+        $q.notify({
+          type: 'negative',
+          message: err.message || 'Failed to start run',
+        })
+      }
+    })()
   })
 }
 
@@ -208,7 +214,7 @@ function canCompleteRun(run: RunInstance): boolean {
   return run.stop_actuals.every(actual => actual.departed_at !== null)
 }
 
-async function completeRun(run: RunInstance) {
+function completeRun(run: RunInstance) {
   // Check if there are incomplete tasks
   const incompleteTasks = run.stop_actuals?.some(
     actual => actual.tasks_completed < actual.tasks_total
@@ -219,11 +225,11 @@ async function completeRun(run: RunInstance) {
       title: 'Incomplete Tasks',
       message: 'Some stops have incomplete tasks. Are you sure you want to complete this run?',
       cancel: true,
-    }).onOk(async () => {
-      await performCompleteRun(run)
+    }).onOk(() => {
+      void performCompleteRun(run)
     })
   } else {
-    await performCompleteRun(run)
+    void performCompleteRun(run)
   }
 }
 
@@ -235,11 +241,12 @@ async function performCompleteRun(run: RunInstance) {
       message: 'Run completed successfully',
     })
     showRunDetail.value = false
-    await refreshRuns()
-  } catch (error: any) {
+    refreshRuns()
+  } catch (error: unknown) {
+    const err = error as { message?: string }
     $q.notify({
       type: 'negative',
-      message: error.message || 'Failed to complete run',
+      message: err.message || 'Failed to complete run',
     })
   }
 }
