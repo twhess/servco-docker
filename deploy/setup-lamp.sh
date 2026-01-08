@@ -1,9 +1,9 @@
 #!/bin/bash
 #
 # ServcoApp LAMP Server Setup Script
-# For AWS Lightsail Ubuntu 22.04 LTS
+# For AWS Lightsail Ubuntu 22.04 LTS or 24.04 LTS
 #
-# Usage: sudo bash setup-lamp.sh
+# Usage: sudo bash setup-lamp.sh [domain]
 #
 
 set -e
@@ -23,9 +23,26 @@ if [ "$EUID" -ne 0 ]; then
     error "Please run as root (sudo bash setup-lamp.sh)"
 fi
 
+# Detect Ubuntu version
+UBUNTU_VERSION=$(lsb_release -rs)
+UBUNTU_CODENAME=$(lsb_release -cs)
+
+log "Detected Ubuntu $UBUNTU_VERSION ($UBUNTU_CODENAME)"
+
+# Validate supported Ubuntu versions
+if [[ "$UBUNTU_VERSION" != "22.04" && "$UBUNTU_VERSION" != "24.04" ]]; then
+    warn "This script is tested on Ubuntu 22.04 and 24.04."
+    warn "Detected version: $UBUNTU_VERSION"
+    read -p "Continue anyway? (y/N) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        exit 1
+    fi
+fi
+
 APP_USER="servco"
 APP_DIR="/var/www/servco"
-DOMAIN="${1:-servco.example.com}"
+DOMAIN="${1:-dev.truckserviceco.com}"
 
 log "Starting ServcoApp LAMP setup..."
 log "Domain: $DOMAIN"
@@ -102,7 +119,13 @@ apt install -y nodejs
 # ==========================================
 log "Installing Python 3 and pandas..."
 apt install -y python3 python3-pip python3-venv
-pip3 install pandas --break-system-packages
+
+# Ubuntu 24.04+ requires --break-system-packages for pip
+if [[ "$UBUNTU_VERSION" == "24.04" ]] || [[ "${UBUNTU_VERSION%%.*}" -ge 24 ]]; then
+    pip3 install pandas --break-system-packages
+else
+    pip3 install pandas
+fi
 
 # ==========================================
 # 7. Install Composer

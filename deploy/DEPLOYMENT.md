@@ -2,14 +2,16 @@
 
 ## AWS Lightsail LAMP Deployment
 
-This guide covers deploying ServcoApp to an AWS Lightsail instance running Ubuntu 22.04 LTS.
+This guide covers deploying ServcoApp to an AWS Lightsail instance running Ubuntu.
 
 ## Prerequisites
 
 - AWS Lightsail instance (recommended: 2GB RAM minimum, 4GB for comfortable operation)
-- Ubuntu 22.04 LTS
+- Ubuntu 22.04 LTS or **24.04 LTS** (recommended)
 - Domain name pointing to your Lightsail instance IP
 - SSH access to your server
+
+> **Note:** The setup script auto-detects Ubuntu version and works with both 22.04 and 24.04.
 
 ## Recommended Instance Sizes
 
