@@ -328,11 +328,11 @@ const selectItem = async (item: typeof itemsStore.items[0]) => {
 };
 
 const onItemUpdated = () => {
-  void itemsStore.fetchItems(runId.value, selectedStopId.value);
+  void itemsStore.fetchItems(runId.value, selectedStopId.value === 'all' ? null : selectedStopId.value);
 };
 
 const onPhotoUploaded = () => {
-  void itemsStore.fetchItems(runId.value, selectedStopId.value);
+  void itemsStore.fetchItems(runId.value, selectedStopId.value === 'all' ? null : selectedStopId.value);
 };
 
 const startRun = async () => {
