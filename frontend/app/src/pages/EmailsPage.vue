@@ -291,10 +291,13 @@ function getAttachmentIcon(mimeType: string): string {
 }
 
 async function fetchEmails() {
-  await emailsStore.fetchEmails({
+  const params: { hasAttachments?: boolean; search?: string } = {
     hasAttachments: showAttachmentsOnly.value,
-    search: searchQuery.value || undefined,
-  });
+  };
+  if (searchQuery.value) {
+    params.search = searchQuery.value;
+  }
+  await emailsStore.fetchEmails(params);
 }
 
 async function doSearch() {

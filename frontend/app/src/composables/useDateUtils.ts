@@ -66,7 +66,7 @@ export function formatTime(timeString: string | null | undefined): string {
 
     // Handle time-only strings (HH:mm or HH:mm:ss)
     const [hours, minutes] = timeString.split(':')
-    const hour = parseInt(hours, 10)
+    const hour = parseInt(hours || '0', 10)
     const ampm = hour >= 12 ? 'PM' : 'AM'
     const displayHour = hour % 12 || 12
     return `${displayHour}:${minutes} ${ampm}`

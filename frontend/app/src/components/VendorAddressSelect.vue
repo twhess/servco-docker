@@ -398,9 +398,11 @@ const submitAddress = async () => {
     // Select the newly created address
     if (vendor.addresses && vendor.addresses.length > 0) {
       const newAddr = vendor.addresses[vendor.addresses.length - 1];
-      emit('update:modelValue', newAddr.id);
-      emit('address-created', newAddr);
-      emit('address-selected', newAddr);
+      if (newAddr) {
+        emit('update:modelValue', newAddr.id);
+        emit('address-created', newAddr);
+        emit('address-selected', newAddr as Address);
+      }
     }
   } finally {
     saving.value = false;
