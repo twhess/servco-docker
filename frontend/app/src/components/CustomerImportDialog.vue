@@ -233,7 +233,7 @@ const progressValue = computed(() => {
 
 watch(() => props.modelValue, (val) => {
   if (val) {
-    loadImports()
+    void loadImports()
   } else {
     stopPolling()
   }
@@ -268,17 +268,19 @@ async function uploadFile() {
 }
 
 function startPolling() {
-  pollInterval.value = window.setInterval(async () => {
-    if (currentImport.value) {
-      const updated = await customersStore.fetchImport(currentImport.value.id)
-      currentImport.value = updated
+  pollInterval.value = window.setInterval(() => {
+    void (async () => {
+      if (currentImport.value) {
+        const updated = await customersStore.fetchImport(currentImport.value.id)
+        currentImport.value = updated
 
-      if (updated.status === 'completed' || updated.status === 'failed') {
-        stopPolling()
-        step.value = 'results'
-        emit('imported')
+        if (updated.status === 'completed' || updated.status === 'failed') {
+          stopPolling()
+          step.value = 'results'
+          emit('imported')
+        }
       }
-    }
+    })()
   }, 3000)
 }
 
@@ -320,7 +322,7 @@ function resetForm() {
   step.value = 'upload'
   selectedFile.value = null
   currentImport.value = null
-  loadImports()
+  void loadImports()
 }
 
 function closeDialog() {
@@ -350,7 +352,7 @@ function getStatusColor(status: string): string {
 
 onMounted(() => {
   if (props.modelValue) {
-    loadImports()
+    void loadImports()
   }
 })
 </script>

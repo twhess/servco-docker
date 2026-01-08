@@ -34,7 +34,7 @@
         <q-icon :name="icon || 'business'" />
       </template>
 
-      <template v-slot:selected-item="scope">
+      <template v-slot:selected-item>
         <span v-if="currentDisplayName">{{ currentDisplayName }}</span>
       </template>
 
