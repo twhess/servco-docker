@@ -188,9 +188,9 @@ import type { Customer, CustomerSearchResult, CustomerDuplicateCandidate } from 
 interface SelectOption {
   id: number;
   formatted_name: string;
-  detail?: string | null;
-  phone?: string | null;
-  primaryAddress?: string;
+  detail?: string | null | undefined;
+  phone?: string | null | undefined;
+  primaryAddress?: string | undefined;
 }
 
 interface Props {
@@ -343,8 +343,8 @@ const submitCreateCustomer = async () => {
   try {
     const result = await customersStore.createCustomer({
       company_name: newCustomer.value.company_name,
-      phone: newCustomer.value.phone || undefined,
-      email: newCustomer.value.email || undefined,
+      phone: newCustomer.value.phone || '',
+      email: newCustomer.value.email || '',
       force_create: false,
     });
 
@@ -372,8 +372,8 @@ const forceCreateCustomer = async () => {
   try {
     const result = await customersStore.createCustomer({
       company_name: newCustomer.value.company_name,
-      phone: newCustomer.value.phone || undefined,
-      email: newCustomer.value.email || undefined,
+      phone: newCustomer.value.phone || '',
+      email: newCustomer.value.email || '',
       force_create: true,
     });
 

@@ -89,7 +89,7 @@ const formattedTime = computed(() => {
   try {
     // Convert H:i to 12-hour format
     const [hours, minutes] = props.saturdayTime.split(':')
-    const hour = parseInt(hours)
+    const hour = parseInt(hours || '0')
     const ampm = hour >= 12 ? 'PM' : 'AM'
     const displayHour = hour % 12 || 12
     return `${displayHour}:${minutes} ${ampm}`

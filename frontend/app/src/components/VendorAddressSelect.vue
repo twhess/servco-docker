@@ -193,11 +193,11 @@ import type { Address, Vendor } from 'src/types/vendors';
 
 interface AddressOption {
   id: number;
-  label: string | null;
+  label: string | null | undefined;
   oneLine: string;
   displayLabel: string;
   isPrimary: boolean;
-  instructions?: string | null;
+  instructions?: string | null | undefined;
 }
 
 interface Props {
@@ -380,14 +380,14 @@ const submitAddress = async () => {
   try {
     const vendor = await vendorsStore.attachAddress(props.vendorId, {
       address: {
-        label: newAddress.value.label || undefined,
+        label: newAddress.value.label || null,
         line1: newAddress.value.line1,
-        line2: newAddress.value.line2 || undefined,
+        line2: newAddress.value.line2 || null,
         city: newAddress.value.city,
         state: newAddress.value.state,
         postal_code: newAddress.value.postal_code,
-        phone: newAddress.value.phone || undefined,
-        instructions: newAddress.value.instructions || undefined,
+        phone: newAddress.value.phone || null,
+        instructions: newAddress.value.instructions || null,
       },
       address_type: 'pickup',
       is_primary: newAddress.value.is_primary,
