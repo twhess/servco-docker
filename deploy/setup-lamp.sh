@@ -88,6 +88,9 @@ a2enmod proxy_fcgi setenvif
 a2enconf php8.3-fpm
 systemctl enable php8.3-fpm
 
+# Create symlink so 'php' command works
+ln -sf /usr/bin/php8.3 /usr/bin/php
+
 # ==========================================
 # 4. Install MySQL 8
 # ==========================================
