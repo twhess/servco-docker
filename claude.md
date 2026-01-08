@@ -178,6 +178,137 @@ Claude **MUST NOT**:
 * **Permission checks**: Use `authStore.can('permission.name')` for UI visibility
 * **Responsive design**: Single column on mobile, grid on tablet/desktop
 
+### ESLint/TypeScript Rules (CRITICAL)
+
+The project uses strict ESLint rules. Follow these patterns to avoid build errors:
+
+#### Floating Promises (`@typescript-eslint/no-floating-promises`)
+All async operations must be handled. Use `void` operator for fire-and-forget calls:
+
+```typescript
+// ❌ BAD - floating promise
+watch(() => props.id, () => {
+  loadData();  // ESLint error!
+});
+
+// ✅ GOOD - use void operator
+watch(() => props.id, () => {
+  void loadData();
+});
+
+// ❌ BAD - async callback in non-async context
+onMounted(() => {
+  loadData();  // ESLint error!
+});
+
+// ✅ GOOD
+onMounted(() => {
+  void loadData();
+});
+```
+
+#### Async Callbacks in Dialog/setInterval (`@typescript-eslint/no-misused-promises`)
+Dialog `.onOk()` and `setInterval` callbacks cannot be async directly:
+
+```typescript
+// ❌ BAD - async callback
+$q.dialog({...}).onOk(async () => {
+  await doSomething();  // ESLint error!
+});
+
+// ✅ GOOD - wrap in void IIFE
+$q.dialog({...}).onOk(() => {
+  void (async () => {
+    await doSomething();
+  })();
+});
+
+// ❌ BAD - async setInterval
+setInterval(async () => {
+  await fetchData();  // ESLint error!
+}, 5000);
+
+// ✅ GOOD - wrap in void IIFE
+setInterval(() => {
+  void (async () => {
+    await fetchData();
+  })();
+}, 5000);
+```
+
+#### Unused Variables in Vue Templates (`vue/no-unused-vars`)
+Remove unused slot parameters:
+
+```vue
+<!-- ❌ BAD - scope is unused -->
+<template v-slot:selected-item="scope">
+  <span>{{ someOtherValue }}</span>
+</template>
+
+<!-- ✅ GOOD - remove unused parameter -->
+<template v-slot:selected-item>
+  <span>{{ someOtherValue }}</span>
+</template>
+```
+
+#### Notify Message Type (`string | null` vs `string | undefined`)
+Quasar's `Notify.create()` expects `message: string | undefined`, not `null`:
+
+```typescript
+// ❌ BAD - error is string | null
+Notify.create({
+  type: 'negative',
+  message: this.error,  // Type error if error is null!
+});
+
+// ✅ GOOD - convert null to undefined
+Notify.create({
+  type: 'negative',
+  message: this.error || undefined,
+});
+```
+
+#### Q-Tab Name Attribute
+Q-Tab `name` prop cannot be `null`:
+
+```vue
+<!-- ❌ BAD -->
+<q-tab :name="null" label="All" />
+
+<!-- ✅ GOOD - use string or number -->
+<q-tab name="all" label="All" />
+```
+
+Then handle in code:
+```typescript
+const selectedTab = ref<number | 'all'>('all');
+
+// When using the value
+const stopId = selectedTab.value === 'all' ? null : selectedTab.value;
+```
+
+#### Type Assertions
+Avoid unnecessary type assertions:
+
+```typescript
+// ❌ BAD - unnecessary assertion
+emit('address-selected', newAddr as Address);
+
+// ✅ GOOD - if types already match, no assertion needed
+emit('address-selected', newAddr);
+```
+
+#### Optional Chaining for Possibly Null Values
+Use optional chaining instead of non-null assertions where the value could be null:
+
+```typescript
+// ❌ BAD - will error if currentImage is null
+images.value.filter(img => img.id !== currentImage.value!.id);
+
+// ✅ GOOD - safe with optional chaining
+images.value.filter(img => img.id !== currentImage.value?.id);
+```
+
 ---
 
 ## File Organization
