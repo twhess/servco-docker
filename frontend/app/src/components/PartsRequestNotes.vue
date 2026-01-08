@@ -257,13 +257,13 @@ function formatDate(dateStr: string | null): string {
 // Watch for partsRequestId changes
 watch(() => props.partsRequestId, (newId) => {
   if (newId) {
-    loadNotes();
+    void loadNotes();
   }
 }, { immediate: true });
 
 onMounted(() => {
   if (props.partsRequestId) {
-    loadNotes();
+    void loadNotes();
   }
 });
 </script>

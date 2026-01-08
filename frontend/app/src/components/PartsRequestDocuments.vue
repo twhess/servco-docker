@@ -291,14 +291,16 @@ function confirmDelete(doc: PartsRequestDocument) {
     message: `Are you sure you want to delete "${doc.original_filename}"?`,
     cancel: true,
     persistent: true,
-  }).onOk(async () => {
-    if (!props.requestId) return;
-    try {
-      await store.deleteDocument(props.requestId, doc.id);
-      documents.value = documents.value.filter(d => d.id !== doc.id);
-    } catch {
-      // Error handled in store
-    }
+  }).onOk(() => {
+    void (async () => {
+      if (!props.requestId) return;
+      try {
+        await store.deleteDocument(props.requestId, doc.id);
+        documents.value = documents.value.filter(d => d.id !== doc.id);
+      } catch {
+        // Error handled in store
+      }
+    })();
   });
 }
 
@@ -339,12 +341,12 @@ function getInlineUrl(doc: PartsRequestDocument): string {
 }
 
 watch(() => props.requestId, () => {
-  loadDocuments();
+  void loadDocuments();
 }, { immediate: true });
 
 onMounted(() => {
   if (props.requestId) {
-    loadDocuments();
+    void loadDocuments();
   }
 });
 </script>

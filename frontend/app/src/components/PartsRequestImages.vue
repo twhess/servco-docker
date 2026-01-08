@@ -492,26 +492,28 @@ function confirmDelete() {
     message: 'Are you sure you want to delete this image?',
     cancel: true,
     persistent: true,
-  }).onOk(async () => {
-    if (!props.requestId || !currentImage.value) return;
+  }).onOk(() => {
+    void (async () => {
+      if (!props.requestId || !currentImage.value) return;
 
-    try {
-      await store.deleteImage(props.requestId, currentImage.value.id);
-      const deletedIndex = currentIndex.value;
-      images.value = images.value.filter(img => img.id !== currentImage.value!.id);
+      try {
+        await store.deleteImage(props.requestId, currentImage.value.id);
+        const deletedIndex = currentIndex.value;
+        images.value = images.value.filter(img => img.id !== currentImage.value?.id);
 
-      if (images.value.length === 0) {
-        showCarousel.value = false;
-      } else {
-        // Move to next or previous image
-        currentIndex.value = Math.min(deletedIndex, images.value.length - 1);
-        currentSlide.value = currentIndex.value;
+        if (images.value.length === 0) {
+          showCarousel.value = false;
+        } else {
+          // Move to next or previous image
+          currentIndex.value = Math.min(deletedIndex, images.value.length - 1);
+          currentSlide.value = currentIndex.value;
+        }
+
+        emit('images-changed', images.value);
+      } catch {
+        // Error handled in store
       }
-
-      emit('images-changed', images.value);
-    } catch {
-      // Error handled in store
-    }
+    })();
   });
 }
 
@@ -520,16 +522,16 @@ function formatDateTime(dateString: string): string {
 }
 
 watch(() => props.requestId, () => {
-  loadImages();
+  void loadImages();
 }, { immediate: true });
 
 watch(() => props.source, () => {
-  loadImages();
+  void loadImages();
 });
 
 onMounted(() => {
   if (props.requestId) {
-    loadImages();
+    void loadImages();
   }
 });
 </script>

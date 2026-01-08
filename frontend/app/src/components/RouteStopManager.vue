@@ -28,7 +28,7 @@
           handle=".drag-handle"
           @end="onReorder"
         >
-          <template #item="{ element: stop, index }">
+          <template #item="{ element: stop }">
             <q-item>
               <q-item-section side>
                 <q-icon name="drag_indicator" class="drag-handle cursor-pointer" />
@@ -186,7 +186,7 @@
                     </q-item-section>
                   </q-item>
                 </template>
-                <template v-slot:selected-item="scope">
+                <template v-slot:selected-item>
                   <span>{{ getVendorName(vendorEntry.vendor_id) }}</span>
                 </template>
               </q-select>
@@ -607,9 +607,11 @@ function confirmDeleteStop(stop: any) {
     title: 'Confirm Delete',
     message: `Are you sure you want to remove ${getStopDisplayName(stop)}?`,
     cancel: true,
-  }).onOk(async () => {
-    await routesStore.removeStop(props.routeId, stop.id)
-    await refreshStops()
+  }).onOk(() => {
+    void (async () => {
+      await routesStore.removeStop(props.routeId, stop.id)
+      await refreshStops()
+    })()
   })
 }
 

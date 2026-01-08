@@ -203,7 +203,7 @@ watch(
   () => props.requestId,
   () => {
     if (isApiMode.value) {
-      loadItems();
+      void loadItems();
     }
   },
   { immediate: true }
