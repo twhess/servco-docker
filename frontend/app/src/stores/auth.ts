@@ -20,6 +20,7 @@ interface User {
     id: number;
     name: string;
   };
+  primary_location_id?: number | null;
   personal_email?: string;
   slack_id?: string;
   dext_email?: string;

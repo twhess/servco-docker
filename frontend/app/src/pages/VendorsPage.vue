@@ -706,10 +706,8 @@ async function fetchVendors() {
   if (filters.value.search) params.search = filters.value.search;
   if (filters.value.status) params.status = filters.value.status;
 
-  const result = await vendorsStore.fetchVendors(params);
-  if (result) {
-    pagination.value.rowsNumber = result.total;
-  }
+  await vendorsStore.fetchVendors(params);
+  pagination.value.rowsNumber = vendorsStore.pagination?.total || 0;
 }
 
 const debouncedFetch = debounce(() => {
@@ -719,7 +717,7 @@ const debouncedFetch = debounce(() => {
 const debouncedDuplicateCheck = debounce(async () => {
   if (vendorForm.name.length >= 2 && !editingVendor.value) {
     const result = await vendorsStore.checkDuplicate(vendorForm.name);
-    duplicateCandidates.value = result || [];
+    duplicateCandidates.value = result?.candidates || [];
   } else {
     duplicateCandidates.value = [];
   }

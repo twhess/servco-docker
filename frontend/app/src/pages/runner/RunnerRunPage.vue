@@ -26,7 +26,7 @@
         mobile-arrows
       >
         <q-tab
-          :name="null"
+          name="all"
           label="All"
           :class="{ 'tab-with-badge': totalOpenItems > 0 }"
         />
@@ -262,11 +262,19 @@ const locationStore = useRunnerLocationStore();
 const $q = useQuasar();
 
 const runId = computed(() => Number(route.params.runId));
-const selectedStopId = ref<number | null>(null);
+const selectedStopId = ref<number | 'all'>('all');
 const selectedItem = ref<typeof itemsStore.items[0] | null>(null);
 const showItemDialog = ref(false);
 const showExitWarning = ref(false);
-const exitWarningItems = ref<typeof itemsStore.items>([]);
+
+interface OpenItem {
+  id: number;
+  reference_number: string;
+  status: { name: string; display_name: string; color: string };
+  is_completed: boolean;
+  action_at_stop: 'pickup' | 'dropoff';
+}
+const exitWarningItems = ref<OpenItem[]>([]);
 const exitStopName = ref('');
 const previousStopId = ref<number | null>(null);
 
@@ -396,7 +404,7 @@ const handleMarkExceptions = async () => {
     await itemsStore.markException(item.id, 'Left at stop without completing');
   }
   showExitWarning.value = false;
-  void itemsStore.fetchItems(runId.value, selectedStopId.value);
+  void itemsStore.fetchItems(runId.value, selectedStopId.value === 'all' ? null : selectedStopId.value);
 };
 
 const handleConfirmLeave = () => {
@@ -413,13 +421,17 @@ watch(
       if (result && result.exited && result.open_items_count > 0) {
         previousStopId.value = oldStopId;
         exitStopName.value = result.stop_name;
-        exitWarningItems.value = result.open_items.map((item) => ({
-          id: item.id,
-          reference_number: item.reference_number,
-          status: { name: item.status, display_name: item.status, color: 'grey' },
-          is_completed: false,
-          action_at_stop: item.action_at_stop,
-        })) as typeof itemsStore.items;
+        exitWarningItems.value = result.open_items
+          .filter((item): item is typeof item & { action_at_stop: 'pickup' | 'dropoff' } =>
+            item.action_at_stop === 'pickup' || item.action_at_stop === 'dropoff'
+          )
+          .map((item) => ({
+            id: item.id,
+            reference_number: item.reference_number,
+            status: { name: item.status, display_name: item.status, color: 'grey' },
+            is_completed: false,
+            action_at_stop: item.action_at_stop,
+          }));
         showExitWarning.value = true;
       }
     }
@@ -433,7 +445,7 @@ watch(
 
 // Fetch items when stop selection changes
 watch(selectedStopId, (stopId) => {
-  void itemsStore.fetchItems(runId.value, stopId);
+  void itemsStore.fetchItems(runId.value, stopId === 'all' ? null : stopId);
 });
 
 onMounted(async () => {
