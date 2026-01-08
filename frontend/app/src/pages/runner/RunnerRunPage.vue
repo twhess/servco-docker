@@ -386,7 +386,7 @@ const completeRun = async () => {
 const goBack = () => {
   runsStore.clearCurrentRun();
   locationStore.stopWatching();
-  router.push('/runner/home');
+  void router.push('/runner/home');
 };
 
 // Exit warning handlers

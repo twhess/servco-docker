@@ -209,6 +209,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
+import { QSelect } from 'quasar';
 import { useVendorsStore } from 'src/stores/vendors';
 import type { Vendor, VendorDuplicateCandidate } from 'src/types/vendors';
 import { detectAcronym } from 'src/composables/useAcronymDetector';
@@ -251,7 +252,7 @@ const emit = defineEmits<{
 }>();
 
 const vendorsStore = useVendorsStore();
-const selectRef = ref<InstanceType<typeof import('quasar').QSelect> | null>(null);
+const selectRef = ref<InstanceType<typeof QSelect> | null>(null);
 
 const inputValue = ref('');
 // Initialize with prop value if provided
@@ -311,8 +312,7 @@ watch(() => props.modelValue, async (newValue) => {
  */
 const filterVendors = async (
   val: string,
-  update: (fn: () => void) => void,
-  _abort: () => void
+  update: (fn: () => void) => void
 ) => {
   if (val.length < 1) {
     update(() => {

@@ -789,7 +789,7 @@ watch(selectedDate, async () => {
 })
 
 function onRowClick(_evt: Event, row: RunInstance) {
-  viewRunDetails(row)
+  void viewRunDetails(row)
 }
 
 async function loadRuns() {

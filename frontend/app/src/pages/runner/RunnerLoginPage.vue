@@ -162,7 +162,7 @@ const submitPin = async () => {
 };
 
 const goToAdminLogin = () => {
-  router.push('/login');
+  void router.push('/login');
 };
 
 // Auto-submit when PIN reaches minimum length

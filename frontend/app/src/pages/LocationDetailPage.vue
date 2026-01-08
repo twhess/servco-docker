@@ -777,7 +777,7 @@ function confirmDelete() {
     void (async () => {
       if (!location.value) return;
       await locationsStore.deleteLocation(location.value.id);
-      router.push('/locations');
+      void router.push('/locations');
     })();
   });
 }

@@ -1207,7 +1207,7 @@ const timeline = ref<PartsRequestEvent[]>([]);
 const photos = ref<PartsRequestPhoto[]>([]);
 
 const runners = ref<{ id: number; name: string; role: string }[]>([]);
-const locations = ref<{ id: number; name: string }[]>([]);
+const locations = ref<{ id: number; name: string; location_type?: string; background_color?: string | null; text_color?: string | null }[]>([]);
 
 // Vendor selection state
 const selectedVendor = ref<Vendor | null>(null);
@@ -1332,17 +1332,17 @@ const formattedUrgencyLevels = computed(() =>
 
 // Filter locations to only show fixed shops
 const shopLocations = computed(() =>
-  locations.value.filter((loc: any) => loc.location_type === 'fixed_shop')
+  locations.value.filter((loc) => loc.location_type === 'fixed_shop')
 );
 
 // Available origin locations (exclude receiving location)
 const availableOriginLocations = computed(() =>
-  shopLocations.value.filter((loc: any) => loc.id !== requestForm.receiving_location_id)
+  shopLocations.value.filter((loc) => loc.id !== requestForm.receiving_location_id)
 );
 
 // Available receiving locations (exclude origin location)
 const availableReceivingLocations = computed(() =>
-  shopLocations.value.filter((loc: any) => loc.id !== requestForm.origin_location_id)
+  shopLocations.value.filter((loc) => loc.id !== requestForm.origin_location_id)
 );
 
 // Check if current request type is "transfer"
@@ -1412,11 +1412,11 @@ function handleVendorCreated(vendor: Vendor) {
   requestForm.vendor_name = '';
 }
 
-function handleAddressSelected(_address: Address | null) {
+function handleAddressSelected() {
   // Address selection is handled via v-model, this is for additional logic if needed
 }
 
-function handleAddressCreated(_address: Address) {
+function handleAddressCreated() {
   // Refresh vendor to get updated addresses
   if (requestForm.vendor_id) {
     void vendorsStore.fetchVendor(requestForm.vendor_id).then(vendor => {
@@ -1453,7 +1453,7 @@ function handleCustomerAddressSelected(address: Address | null) {
   }
 }
 
-function handleCustomerAddressCreated(_address: Address) {
+function handleCustomerAddressCreated() {
   // Refresh customer to get updated addresses
   if (requestForm.customer_id) {
     void customersStore.fetchCustomer(requestForm.customer_id).then(customer => {
@@ -1870,7 +1870,7 @@ function onTableRequest(props: { pagination: { page: number; rowsPerPage: number
 }
 
 function onRowClick(evt: Event, row: PartsRequest) {
-  viewRequest(row);
+  void viewRequest(row);
 }
 
 function openCreateDialog() {

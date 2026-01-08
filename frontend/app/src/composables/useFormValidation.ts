@@ -216,6 +216,7 @@ export const validationRules = {
   email: (message = 'Please enter a valid email address'): ValidationRule => ({
     validate: (value) => {
       if (!value) return true; // Use with required() if field is required
+      if (typeof value !== 'string') return false;
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       return emailRegex.test(value);
     },
@@ -234,7 +235,10 @@ export const validationRules = {
   minLength: (min: number, message?: string): ValidationRule => ({
     validate: (value) => {
       if (!value) return true;
-      return value.length >= min;
+      if (typeof value === 'string' || Array.isArray(value)) {
+        return value.length >= min;
+      }
+      return false;
     },
     message: message || `Must be at least ${min} characters`,
   }),
@@ -242,7 +246,10 @@ export const validationRules = {
   maxLength: (max: number, message?: string): ValidationRule => ({
     validate: (value) => {
       if (!value) return true;
-      return value.length <= max;
+      if (typeof value === 'string' || Array.isArray(value)) {
+        return value.length <= max;
+      }
+      return false;
     },
     message: message || `Must be no more than ${max} characters`,
   }),
