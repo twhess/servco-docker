@@ -44,14 +44,24 @@ echo ""
 
 # Determine target commit
 if [ -n "$1" ]; then
-    TARGET_COMMIT="$1"
+    # Allow "head" as shorthand for HEAD~1
+    if [ "${1,,}" = "head" ] || [ "$1" = "1" ] || [ "$1" = "prev" ] || [ "$1" = "previous" ]; then
+        TARGET_COMMIT="HEAD~1"
+    else
+        TARGET_COMMIT="$1"
+    fi
 else
-    echo -e "${YELLOW}Enter the commit hash to rollback to (or 'HEAD~1' for previous):${NC}"
+    echo -e "${YELLOW}Enter the commit hash to rollback to (or 'head' for previous):${NC}"
     read -p "Commit: " TARGET_COMMIT
 
     if [ -z "$TARGET_COMMIT" ]; then
         echo "No commit specified. Aborted."
         exit 0
+    fi
+
+    # Allow "head" as shorthand for HEAD~1
+    if [ "${TARGET_COMMIT,,}" = "head" ] || [ "$TARGET_COMMIT" = "1" ] || [ "$TARGET_COMMIT" = "prev" ] || [ "$TARGET_COMMIT" = "previous" ]; then
+        TARGET_COMMIT="HEAD~1"
     fi
 fi
 
