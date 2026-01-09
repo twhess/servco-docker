@@ -24,7 +24,7 @@ CYAN='\033[0;36m'
 NC='\033[0m'
 
 # Configuration
-APP_DIR="/var/www/servco"
+APP_DIR="/var/www/servco/backend"
 BACKUP_DIR="/var/backups/servcoapp"
 DB_NAME="app"
 DB_USER="app"

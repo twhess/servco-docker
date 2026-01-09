@@ -23,12 +23,13 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Configuration - Update these for your environment
-APP_DIR="/var/www/servco"
+REPO_DIR="/var/www/servco"
+APP_DIR="/var/www/servco/backend"
 BACKUP_DIR="/var/backups/servcoapp"
 DB_NAME="app"
 DB_USER="app"
 DB_PASS="${DB_PASSWORD:-}"  # Set via environment variable or prompt
-GIT_BRANCH="main"
+GIT_BRANCH="master"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
 # Parse arguments
@@ -101,8 +102,10 @@ echo ""
 
 # Step 3: Pull latest code
 echo -e "${YELLOW}Step 3: Pulling latest code from $GIT_BRANCH...${NC}"
+cd "$REPO_DIR"
 git fetch origin
 git reset --hard "origin/$GIT_BRANCH"
+cd "$APP_DIR"
 echo -e "${GREEN}✓ Code updated${NC}"
 echo ""
 

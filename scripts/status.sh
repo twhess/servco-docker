@@ -13,7 +13,8 @@ YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-APP_DIR="/var/www/servco"
+REPO_DIR="/var/www/servco"
+APP_DIR="/var/www/servco/backend"
 BACKUP_DIR="/var/backups/servcoapp"
 
 cd "$APP_DIR" 2>/dev/null || {
@@ -37,8 +38,9 @@ echo "  Directory: $APP_DIR"
 echo "  Laravel: $(php artisan --version 2>/dev/null | head -1)"
 echo ""
 
-# Git Status
+# Git Status (run from repo root)
 echo -e "${YELLOW}Git:${NC}"
+cd "$REPO_DIR"
 echo "  Branch: $(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
 echo "  Commit: $(git rev-parse --short HEAD 2>/dev/null)"
 echo "  Date: $(git log -1 --format=%ci 2>/dev/null)"
@@ -53,6 +55,7 @@ if [ -n "$REMOTE" ]; then
         echo -e "  Remote: ${YELLOW}$BEHIND commit(s) behind${NC}"
     fi
 fi
+cd "$APP_DIR"
 echo ""
 
 # Migration Status

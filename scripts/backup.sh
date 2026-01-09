@@ -20,7 +20,7 @@ if [ -f "$SCRIPT_DIR/.env" ]; then
 fi
 
 # Configuration
-APP_DIR="/var/www/servco"
+APP_DIR="/var/www/servco/backend"
 BACKUP_DIR="/var/backups/servcoapp"
 DB_NAME="app"
 DB_USER="app"

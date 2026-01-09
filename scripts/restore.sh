@@ -23,7 +23,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m'
 
 # Configuration
-APP_DIR="/var/www/servco"
+APP_DIR="/var/www/servco/backend"
 DB_NAME="app"
 DB_USER="app"
 DB_PASS="${DB_PASSWORD:-}"

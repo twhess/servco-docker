@@ -15,8 +15,8 @@ YELLOW='\033[1;33m'
 NC='\033[0m'
 
 # Configuration - Update these for your environment
-APP_DIR="/var/www/servco"
-FRONTEND_DIR="$APP_DIR/frontend/app"
+REPO_DIR="/var/www/servco"
+FRONTEND_DIR="$REPO_DIR/frontend/app"
 GIT_BRANCH="master"
 
 # Parse arguments
@@ -41,8 +41,8 @@ echo -e "${GREEN}========================================${NC}"
 echo ""
 
 # Check directories exist
-if [ ! -d "$APP_DIR" ]; then
-    echo -e "${RED}Error: APP_DIR not found: $APP_DIR${NC}"
+if [ ! -d "$REPO_DIR" ]; then
+    echo -e "${RED}Error: REPO_DIR not found: $REPO_DIR${NC}"
     exit 1
 fi
 
@@ -51,7 +51,7 @@ if [ ! -d "$FRONTEND_DIR" ]; then
     exit 1
 fi
 
-cd "$APP_DIR"
+cd "$REPO_DIR"
 
 # Get current commit before pull
 BEFORE_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "none")
