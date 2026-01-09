@@ -186,7 +186,7 @@
                     <q-item-section>
                       <q-item-label>
                         <q-icon name="phone" size="xs" class="q-mr-xs" />
-                        {{ phone.phone_number }}
+                        {{ formatPhoneNumber(phone.phone_number) }}
                         <span v-if="phone.extension"> ext. {{ phone.extension }}</span>
                         <q-chip
                           v-if="phone.is_primary"
@@ -480,9 +480,12 @@
             />
 
             <q-input
-              v-model="phoneForm.phone_number"
+              :model-value="phoneForm.phone_number"
+              @update:model-value="(val) => phoneForm.phone_number = formatPhoneNumber(val as string)"
               label="Phone Number *"
               outlined
+              maxlength="14"
+              hint="Format: (xxx)xxx-xxxx"
               :rules="[val => !!val || 'Phone number is required']"
             />
 
@@ -616,6 +619,7 @@ import { useLocationsStore, type ServiceLocation, type ServiceLocationPhone, typ
 import { useAuthStore } from 'src/stores/auth';
 import { useQuasar } from 'quasar';
 import { api } from 'boot/axios';
+import { formatPhoneNumber } from 'src/composables/usePhoneFormat';
 
 const route = useRoute();
 const router = useRouter();

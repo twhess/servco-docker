@@ -147,7 +147,7 @@ class AuthController extends Controller
         $includeInactive = $request->query('include_inactive', 'false') === 'true';
 
         $query = User::with(['roles', 'homeLocation'])
-            ->orderBy('created_at', 'desc');
+            ->orderBy('updated_at', 'desc');
 
         if (!$includeInactive) {
             $query->where('active', true);
@@ -161,6 +161,18 @@ class AuthController extends Controller
         });
 
         return response()->json($users);
+    }
+
+    public function showUser(Request $request, $id)
+    {
+        $user = User::with(['roles', 'homeLocation'])->findOrFail($id);
+
+        $userData = $user->toArray();
+        $userData['role_ids'] = $user->roles->pluck('id')->toArray();
+
+        return response()->json([
+            'user' => $userData,
+        ]);
     }
 
     public function updateUser(Request $request, $id)
@@ -258,8 +270,45 @@ class AuthController extends Controller
         $user->active = !$user->active;
         $user->save();
 
+        // Load relationships for response
+        $user->load(['roles', 'homeLocation']);
+        $userData = $user->toArray();
+        $userData['role_ids'] = $user->roles->pluck('id')->toArray();
+
         return response()->json([
-            'user' => $user,
+            'user' => $userData,
+            'message' => $user->active ? 'User activated successfully' : 'User deactivated successfully',
+        ]);
+    }
+
+    /**
+     * Update user active status directly (for inline toggle)
+     */
+    public function updateUserStatus(Request $request, $id)
+    {
+        $user = User::findOrFail($id);
+
+        // Prevent users from deactivating themselves
+        if ($user->id === $request->user()->id) {
+            return response()->json([
+                'message' => 'You cannot change your own active status',
+            ], 403);
+        }
+
+        $request->validate([
+            'active' => 'required|boolean',
+        ]);
+
+        $user->active = $request->active;
+        $user->save();
+
+        // Load relationships for response
+        $user->load(['roles', 'homeLocation']);
+        $userData = $user->toArray();
+        $userData['role_ids'] = $user->roles->pluck('id')->toArray();
+
+        return response()->json([
+            'user' => $userData,
             'message' => $user->active ? 'User activated successfully' : 'User deactivated successfully',
         ]);
     }
@@ -372,6 +421,104 @@ class AuthController extends Controller
 
         return response()->json([
             'user' => $user,
+            'message' => 'Avatar deleted successfully',
+        ]);
+    }
+
+    /**
+     * Upload avatar for a specific user (admin only)
+     */
+    public function uploadUserAvatar(Request $request, $id)
+    {
+        $user = User::findOrFail($id);
+
+        $request->validate([
+            'avatar' => 'required|image|mimes:jpeg,png,jpg,gif|max:2048',
+        ]);
+
+        if ($request->hasFile('avatar')) {
+            // Delete old avatar if exists
+            if ($user->avatar && \Storage::disk('public')->exists($user->avatar)) {
+                \Storage::disk('public')->delete($user->avatar);
+            }
+
+            $avatarPath = $request->file('avatar')->store('avatars', 'public');
+
+            $user->update([
+                'avatar' => $avatarPath,
+            ]);
+
+            // Load relationships for response
+            $user->load(['roles', 'homeLocation']);
+            $userData = $user->toArray();
+            $userData['role_ids'] = $user->roles->pluck('id')->toArray();
+
+            return response()->json([
+                'user' => $userData,
+                'avatar_url' => \Storage::url($avatarPath),
+                'message' => 'Avatar uploaded successfully',
+            ]);
+        }
+
+        return response()->json([
+            'message' => 'No avatar file provided',
+        ], 422);
+    }
+
+    /**
+     * Set a preset avatar for a specific user (admin only)
+     */
+    public function setUserPresetAvatar(Request $request, $id)
+    {
+        $user = User::findOrFail($id);
+
+        $request->validate([
+            'preset' => 'required|string|max:100',
+        ]);
+
+        // Delete old custom avatar if exists
+        if ($user->avatar && \Storage::disk('public')->exists($user->avatar)) {
+            \Storage::disk('public')->delete($user->avatar);
+        }
+
+        // Store preset identifier (prefixed to distinguish from uploaded files)
+        $user->update([
+            'avatar' => 'preset:' . $request->preset,
+        ]);
+
+        // Load relationships for response
+        $user->load(['roles', 'homeLocation']);
+        $userData = $user->toArray();
+        $userData['role_ids'] = $user->roles->pluck('id')->toArray();
+
+        return response()->json([
+            'user' => $userData,
+            'message' => 'Avatar updated successfully',
+        ]);
+    }
+
+    /**
+     * Delete avatar for a specific user (admin only)
+     */
+    public function deleteUserAvatar(Request $request, $id)
+    {
+        $user = User::findOrFail($id);
+
+        if ($user->avatar && !str_starts_with($user->avatar, 'preset:') && \Storage::disk('public')->exists($user->avatar)) {
+            \Storage::disk('public')->delete($user->avatar);
+        }
+
+        $user->update([
+            'avatar' => null,
+        ]);
+
+        // Load relationships for response
+        $user->load(['roles', 'homeLocation']);
+        $userData = $user->toArray();
+        $userData['role_ids'] = $user->roles->pluck('id')->toArray();
+
+        return response()->json([
+            'user' => $userData,
             'message' => 'Avatar deleted successfully',
         ]);
     }

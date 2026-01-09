@@ -178,6 +178,80 @@ Claude **MUST NOT**:
 * **Permission checks**: Use `authStore.can('permission.name')` for UI visibility
 * **Responsive design**: Single column on mobile, grid on tablet/desktop
 
+#### Dropdown/Select Width Constraints
+
+All `q-select` dropdowns must constrain their popup width to match the input field. Add these props:
+
+```vue
+<q-select
+  ...
+  popup-content-class="mobile-select-popup"
+  popup-content-style="max-width: 100%"
+>
+```
+
+Add this global CSS (non-scoped `<style>` block) to the component:
+
+```scss
+<style>
+.mobile-select-popup {
+  min-width: 0 !important;
+
+  .q-item {
+    min-height: 36px;
+    padding: 4px 12px;
+  }
+
+  .q-item__label {
+    white-space: normal;
+    word-break: break-word;
+  }
+}
+</style>
+```
+
+**Note:** This CSS must be in a non-scoped `<style>` block because Quasar renders the popup in a portal outside the component's DOM tree.
+
+#### Phone Number Formatting
+
+All phone numbers must be displayed and input in `(xxx)xxx-xxxx` format. Use the shared utility at `src/composables/usePhoneFormat.ts`:
+
+```typescript
+import { formatPhoneNumber } from 'src/composables/usePhoneFormat';
+```
+
+**For inputs** (live formatting as user types):
+
+```vue
+<q-input
+  :model-value="form.phone_number"
+  @update:model-value="(val) => form.phone_number = formatPhoneNumber(val as string)"
+  label="Phone Number"
+  outlined
+  maxlength="14"
+  hint="Format: (xxx)xxx-xxxx"
+/>
+```
+
+**For display** (read-only phone numbers):
+
+```vue
+<span>{{ formatPhoneNumber(user.phone_number) }}</span>
+```
+
+**For loading data** (format when populating forms):
+
+```typescript
+profileForm.value = {
+  phone_number: formatPhoneNumber(user.phone_number),
+  // ... other fields
+};
+```
+
+The utility also exports `unformatPhoneNumber()` to extract raw digits if needed for API submission.
+
+**Note:** The backend currently stores formatted phone numbers. If migrating to raw digits, use `unformatPhoneNumber()` before API calls.
+
 ### ESLint/TypeScript Rules (CRITICAL)
 
 The project uses strict ESLint rules. Follow these patterns to avoid build errors:
@@ -342,7 +416,8 @@ frontend/app/src/
 │   └── MobileSelect.vue
 ├── composables/             # Reusable logic (Vue 3 composables)
 │   ├── useFormValidation.ts
-│   └── useDraftState.ts
+│   ├── useDraftState.ts
+│   └── usePhoneFormat.ts    # Phone number formatting utility
 ├── layouts/                 # Layout wrappers (MainLayout.vue)
 ├── pages/                   # Page components (route targets)
 │   ├── PartsRequestsPage.vue

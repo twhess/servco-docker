@@ -14,7 +14,9 @@ declare module 'vue' {
 // good idea to move this instance creation inside of the
 // "export default () => {}" function below (which runs individually
 // for each client)
-const api = axios.create({ baseURL: 'http://localhost:8080/api' });
+// Use environment variable for API base URL, fallback to relative /api for production
+const apiBaseUrl = process.env.API_BASE_URL || '/api';
+const api = axios.create({ baseURL: apiBaseUrl });
 
 // Add request interceptor to include auth token
 api.interceptors.request.use(

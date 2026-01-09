@@ -78,10 +78,14 @@
           <q-btn round dense flat icon="apps" />
           <q-btn round dense flat icon="notifications" />
           <q-btn round flat>
-            <q-avatar size="26px" color="primary" text-color="white">
-              <img v-if="userAvatarUrl" :src="userAvatarUrl">
-              <span v-else>{{ userInitials }}</span>
-            </q-avatar>
+            <UserAvatar
+              :avatar="authStore.user?.avatar"
+              :first-name="authStore.user?.first_name"
+              :last-name="authStore.user?.last_name"
+              :preferred-name="authStore.user?.preferred_name"
+              :username="authStore.user?.username"
+              size="26px"
+            />
             <q-menu>
               <q-list style="min-width: 150px">
                 <q-item clickable v-close-popup @click="router.push('/profile')">
@@ -422,9 +426,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from 'stores/auth';
+import UserAvatar from 'src/components/UserAvatar.vue';
 
 const router = useRouter();
 const authStore = useAuthStore();
@@ -449,31 +454,6 @@ function toggleSidebarCollapse() {
   sidebarCollapsed.value = !sidebarCollapsed.value;
   localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(sidebarCollapsed.value));
 }
-
-const userAvatarUrl = computed(() => {
-  if (authStore.user?.avatar) {
-    return `http://localhost:8080/storage/${authStore.user.avatar}`;
-  }
-  return null;
-});
-
-const userInitials = computed(() => {
-  const user = authStore.user;
-  if (!user) return '?';
-
-  const firstName = user.first_name || user.preferred_name || '';
-  const lastName = user.last_name || '';
-
-  if (firstName && lastName) {
-    return `${firstName[0]}${lastName[0]}`.toUpperCase();
-  } else if (firstName) {
-    return firstName.charAt(0).toUpperCase();
-  } else if (user.username) {
-    return user.username.charAt(0).toUpperCase();
-  }
-
-  return '?';
-});
 
 function toggleLeftDrawer() {
   leftDrawerOpen.value = !leftDrawerOpen.value;

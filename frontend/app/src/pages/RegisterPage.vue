@@ -56,10 +56,12 @@
 
             <div class="col-12 col-sm-6">
               <q-input
-                v-model="phoneNumber"
-                type="text"
+                :model-value="phoneNumber"
+                @update:model-value="(val) => phoneNumber = formatPhoneNumber(val as string)"
                 label="Phone Number"
                 outlined
+                maxlength="14"
+                hint="Format: (xxx)xxx-xxxx"
               />
             </div>
 
@@ -220,6 +222,7 @@ import { useRouter } from 'vue-router';
 import { useAuthStore } from 'stores/auth';
 import { useQuasar } from 'quasar';
 import { api } from 'boot/axios';
+import { formatPhoneNumber } from 'src/composables/usePhoneFormat';
 
 const router = useRouter();
 const authStore = useAuthStore();

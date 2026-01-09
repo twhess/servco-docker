@@ -53,89 +53,100 @@
               row-key="id"
               :loading="loading"
               :pagination="pagination"
-              @request="onRequest"
+              @update:pagination="pagination = $event"
               flat
               bordered
+              class="users-table"
+              @row-click="onRowClick"
             >
+              <!-- Employee ID Column -->
+              <template v-slot:body-cell-employee_id="props">
+                <q-td :props="props">
+                  <span class="text-body2">{{ props.row.employee_id || '—' }}</span>
+                </q-td>
+              </template>
+
+              <!-- Username with Avatar Column -->
               <template v-slot:body-cell-username="props">
                 <q-td :props="props">
-                  <div class="row items-center">
-                    <q-avatar size="32px" class="q-mr-sm">
-                      <img :src="`https://ui-avatars.com/api/?name=${encodeURIComponent(props.row.username)}&background=random`">
-                    </q-avatar>
-                    <div>
-                      <div class="text-weight-medium">{{ props.row.username }}</div>
-                    </div>
+                  <div class="row items-center no-wrap">
+                    <UserAvatar
+                      :avatar="props.row.avatar"
+                      :first-name="props.row.first_name"
+                      :last-name="props.row.last_name"
+                      :preferred-name="props.row.preferred_name"
+                      :username="props.row.username"
+                      size="32px"
+                      class="q-mr-sm"
+                    />
+                    <span class="text-weight-medium">{{ props.row.username }}</span>
                   </div>
                 </q-td>
               </template>
 
-              <template v-slot:body-cell-role="props">
+              <!-- Preferred/First Name Column -->
+              <template v-slot:body-cell-display_name="props">
                 <q-td :props="props">
-                  <q-chip
-                    dense
-                    :color="getRoleColor(props.row.role)"
-                    text-color="white"
-                    size="sm"
-                  >
-                    {{ getRoleLabel(props.row.role) }}
-                  </q-chip>
+                  <span class="text-body2">{{ props.row.preferred_name || props.row.first_name || '—' }}</span>
                 </q-td>
               </template>
 
+              <!-- Last Name Column -->
+              <template v-slot:body-cell-last_name="props">
+                <q-td :props="props">
+                  <span class="text-body2">{{ props.row.last_name || '—' }}</span>
+                </q-td>
+              </template>
+
+              <!-- Home Shop Column -->
+              <template v-slot:body-cell-home_shop="props">
+                <q-td :props="props">
+                  <span class="text-body2">{{ getHomeShopName(props.row) }}</span>
+                </q-td>
+              </template>
+
+              <!-- Email Column -->
               <template v-slot:body-cell-email="props">
                 <q-td :props="props">
-                  <div class="text-body2">{{ props.row.email }}</div>
+                  <span class="text-body2">{{ props.row.email || '—' }}</span>
                 </q-td>
               </template>
 
-              <template v-slot:body-cell-created_at="props">
+              <!-- Phone Column -->
+              <template v-slot:body-cell-phone_number="props">
                 <q-td :props="props">
-                  <div class="text-body2">{{ formatDate(props.row.created_at) }}</div>
+                  <span class="text-body2">{{ formatPhoneNumber(props.row.phone_number) || '—' }}</span>
                 </q-td>
               </template>
 
-              <template v-slot:body-cell-actions="props">
+              <!-- Last Modified Column -->
+              <template v-slot:body-cell-updated_at="props">
                 <q-td :props="props">
-                  <q-btn
-                    flat
-                    dense
-                    round
-                    icon="more_vert"
-                    size="sm"
-                  >
-                    <q-menu>
-                      <q-list style="min-width: 150px">
-                        <q-item clickable v-close-popup @click="viewUser(props.row)">
-                          <q-item-section avatar>
-                            <q-icon name="visibility" />
-                          </q-item-section>
-                          <q-item-section>View Details</q-item-section>
-                        </q-item>
-                        <q-item clickable v-close-popup @click="editUser(props.row)">
-                          <q-item-section avatar>
-                            <q-icon name="edit" />
-                          </q-item-section>
-                          <q-item-section>Edit</q-item-section>
-                        </q-item>
-                        <q-separator />
-                        <q-item
-                          clickable
-                          v-close-popup
-                          @click="toggleUserActive(props.row)"
-                          :class="props.row.active ? 'text-warning' : 'text-positive'"
-                        >
-                          <q-item-section avatar>
-                            <q-icon
-                              :name="props.row.active ? 'block' : 'check_circle'"
-                              :color="props.row.active ? 'warning' : 'positive'"
-                            />
-                          </q-item-section>
-                          <q-item-section>{{ props.row.active ? 'Deactivate' : 'Activate' }}</q-item-section>
-                        </q-item>
-                      </q-list>
-                    </q-menu>
-                  </q-btn>
+                  <span class="text-body2">{{ formatDate(props.row.updated_at) }}</span>
+                </q-td>
+              </template>
+
+              <!-- Active/Deactive Toggle Column -->
+              <template v-slot:body-cell-active="props">
+                <q-td :props="props" @click.stop>
+                  <div class="row items-center no-wrap">
+                    <q-toggle
+                      :model-value="props.row.active"
+                      :disable="!canToggleStatus(props.row) || togglingUserId === props.row.id"
+                      :loading="togglingUserId === props.row.id"
+                      color="positive"
+                      @update:model-value="(val) => handleToggleActive(props.row, val)"
+                    />
+                    <span
+                      class="text-caption q-ml-xs"
+                      :class="props.row.active ? 'text-positive' : 'text-grey'"
+                    >
+                      {{ props.row.active ? 'Active' : 'Deactive' }}
+                    </span>
+                    <q-tooltip v-if="!canToggleStatus(props.row)">
+                      {{ getToggleTooltip(props.row) }}
+                    </q-tooltip>
+                  </div>
                 </q-td>
               </template>
             </q-table>
@@ -189,6 +200,8 @@
                   multiple
                   use-chips
                   hint="Assign one or more roles to this user"
+                  popup-content-class="mobile-select-popup"
+                  popup-content-style="max-width: 100%"
                 >
                   <template v-slot:selected-item="scope">
                     <q-chip
@@ -235,10 +248,13 @@
 
               <div class="col-12">
                 <q-input
-                  v-model="editForm.phone_number"
+                  :model-value="editForm.phone_number"
+                  @update:model-value="(val) => onEditPhoneInput(val as string)"
                   label="Phone Number"
                   outlined
                   dense
+                  maxlength="14"
+                  hint="Format: (xxx)xxx-xxxx"
                 />
               </div>
 
@@ -401,7 +417,7 @@
                 type="submit"
                 label="Save"
                 color="primary"
-                :loading="loading"
+                :loading="saving"
               />
             </div>
           </q-form>
@@ -410,7 +426,7 @@
     </q-dialog>
 
     <!-- Add User Dialog -->
-    <q-dialog v-model="showAddDialog">
+    <q-dialog v-model="showAddDialog" persistent>
       <q-card style="width: 100%; max-width: 600px; max-height: 80vh">
         <q-card-section class="row items-center q-pb-none">
           <div class="text-h6">Add New User</div>
@@ -476,6 +492,8 @@
                   multiple
                   use-chips
                   hint="Assign one or more roles to this user"
+                  popup-content-class="mobile-select-popup"
+                  popup-content-style="max-width: 100%"
                 >
                   <template v-slot:selected-item="scope">
                     <q-chip
@@ -522,10 +540,13 @@
 
               <div class="col-12">
                 <q-input
-                  v-model="addForm.phone_number"
+                  :model-value="addForm.phone_number"
+                  @update:model-value="(val) => onAddPhoneInput(val as string)"
                   label="Phone Number"
                   outlined
                   dense
+                  maxlength="14"
+                  hint="Format: (xxx)xxx-xxxx"
                 />
               </div>
 
@@ -675,150 +696,10 @@
                 type="submit"
                 label="Add User"
                 color="primary"
-                :loading="loading"
+                :loading="saving"
               />
             </div>
           </q-form>
-        </q-card-section>
-      </q-card>
-    </q-dialog>
-
-    <!-- User Details Dialog -->
-    <q-dialog v-model="showUserDialog">
-      <q-card style="width: 100%; max-width: 500px">
-        <q-card-section class="row items-center q-pb-none">
-          <div class="text-h6">User Details</div>
-          <q-space />
-          <q-btn icon="close" flat round dense v-close-popup />
-        </q-card-section>
-
-        <q-card-section v-if="selectedUser">
-          <div class="q-mb-md text-center">
-            <q-avatar size="80px">
-              <img :src="`https://ui-avatars.com/api/?name=${encodeURIComponent(selectedUser.username)}&background=random&size=200`">
-            </q-avatar>
-          </div>
-
-          <q-list>
-            <q-item>
-              <q-item-section>
-                <q-item-label caption>Username</q-item-label>
-                <q-item-label>{{ selectedUser.username }}</q-item-label>
-              </q-item-section>
-            </q-item>
-
-            <q-item v-if="selectedUser.employee_id">
-              <q-item-section>
-                <q-item-label caption>Employee ID</q-item-label>
-                <q-item-label>{{ selectedUser.employee_id }}</q-item-label>
-              </q-item-section>
-            </q-item>
-
-            <q-item v-if="selectedUser.first_name">
-              <q-item-section>
-                <q-item-label caption>First Name</q-item-label>
-                <q-item-label>{{ selectedUser.first_name }}</q-item-label>
-              </q-item-section>
-            </q-item>
-
-            <q-item v-if="selectedUser.last_name">
-              <q-item-section>
-                <q-item-label caption>Last Name</q-item-label>
-                <q-item-label>{{ selectedUser.last_name }}</q-item-label>
-              </q-item-section>
-            </q-item>
-
-            <q-item v-if="selectedUser.preferred_name">
-              <q-item-section>
-                <q-item-label caption>Preferred Name</q-item-label>
-                <q-item-label>{{ selectedUser.preferred_name }}</q-item-label>
-              </q-item-section>
-            </q-item>
-
-            <q-item>
-              <q-item-section>
-                <q-item-label caption>Email</q-item-label>
-                <q-item-label>{{ selectedUser.email }}</q-item-label>
-              </q-item-section>
-            </q-item>
-
-            <q-item v-if="selectedUser.personal_email">
-              <q-item-section>
-                <q-item-label caption>Personal Email</q-item-label>
-                <q-item-label>{{ selectedUser.personal_email }}</q-item-label>
-              </q-item-section>
-            </q-item>
-
-            <q-item v-if="selectedUser.dext_email">
-              <q-item-section>
-                <q-item-label caption>Dext Email</q-item-label>
-                <q-item-label>{{ selectedUser.dext_email }}</q-item-label>
-              </q-item-section>
-            </q-item>
-
-            <q-item v-if="selectedUser.phone_number">
-              <q-item-section>
-                <q-item-label caption>Phone Number</q-item-label>
-                <q-item-label>{{ selectedUser.phone_number }}</q-item-label>
-              </q-item-section>
-            </q-item>
-
-            <q-item v-if="selectedUser.pin_code">
-              <q-item-section>
-                <q-item-label caption>PIN Code</q-item-label>
-                <q-item-label>{{ selectedUser.pin_code }}</q-item-label>
-              </q-item-section>
-            </q-item>
-
-            <q-item v-if="selectedUser.home_shop">
-              <q-item-section>
-                <q-item-label caption>Home Shop</q-item-label>
-                <q-item-label>{{ selectedUser.home_shop }}</q-item-label>
-              </q-item-section>
-            </q-item>
-
-            <q-item v-if="selectedUser.slack_id">
-              <q-item-section>
-                <q-item-label caption>Slack ID</q-item-label>
-                <q-item-label>{{ selectedUser.slack_id }}</q-item-label>
-              </q-item-section>
-            </q-item>
-
-            <q-item v-if="selectedUser.paytype">
-              <q-item-section>
-                <q-item-label caption>Pay Type</q-item-label>
-                <q-item-label>{{ selectedUser.paytype }}</q-item-label>
-              </q-item-section>
-            </q-item>
-
-            <q-item v-if="selectedUser.address">
-              <q-item-section>
-                <q-item-label caption>Address</q-item-label>
-                <q-item-label>{{ selectedUser.address }}</q-item-label>
-              </q-item-section>
-            </q-item>
-
-            <q-item>
-              <q-item-section>
-                <q-item-label caption>User ID</q-item-label>
-                <q-item-label>{{ selectedUser.id }}</q-item-label>
-              </q-item-section>
-            </q-item>
-
-            <q-item>
-              <q-item-section>
-                <q-item-label caption>Created At</q-item-label>
-                <q-item-label>{{ formatDate(selectedUser.created_at) }}</q-item-label>
-              </q-item-section>
-            </q-item>
-
-            <q-item v-if="selectedUser.updated_at">
-              <q-item-section>
-                <q-item-label caption>Last Updated</q-item-label>
-                <q-item-label>{{ formatDate(selectedUser.updated_at) }}</q-item-label>
-              </q-item-section>
-            </q-item>
-          </q-list>
         </q-card-section>
       </q-card>
     </q-dialog>
@@ -827,8 +708,12 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
 import { useQuasar } from 'quasar';
 import { api } from 'boot/axios';
+import { formatPhoneNumber } from 'src/composables/usePhoneFormat';
+import { useAuthStore } from 'stores/auth';
+import UserAvatar from 'src/components/UserAvatar.vue';
 
 interface User {
   id: number;
@@ -849,6 +734,7 @@ interface User {
   personal_email?: string;
   slack_id?: string;
   dext_email?: string;
+  avatar?: string;
   address?: string;
   address_line_1?: string;
   address_line_2?: string;
@@ -876,17 +762,20 @@ interface Role {
   description?: string;
 }
 
+const router = useRouter();
 const $q = useQuasar();
+const authStore = useAuthStore();
 
 const users = ref<User[]>([]);
 const loading = ref(false);
+const saving = ref(false);
 const searchQuery = ref('');
 const showInactive = ref(false);
-const showUserDialog = ref(false);
 const showEditDialog = ref(false);
 const showAddDialog = ref(false);
-const selectedUser = ref<User | null>(null);
 const editForm = ref<User | null>(null);
+const togglingUserId = ref<number | null>(null);
+
 const addForm = ref({
   username: '',
   password: '',
@@ -916,32 +805,21 @@ const addForm = ref({
 const shopLocations = ref<ShopLocation[]>([]);
 const roles = ref<Role[]>([]);
 
-const roleOptions = [
-  { value: 'super_admin', label: 'Super Admin' },
-  { value: 'ops_admin', label: 'Ops Admin' },
-  { value: 'dispatcher', label: 'Dispatcher' },
-  { value: 'shop_manager', label: 'Shop Manager' },
-  { value: 'parts_manager', label: 'Parts Manager' },
-  { value: 'runner_driver', label: 'Runner Driver' },
-  { value: 'technician_mobile', label: 'Mobile Technician' },
-  { value: 'read_only', label: 'Read Only' },
-];
-
 const pagination = ref({
-  sortBy: 'id',
-  descending: false,
+  sortBy: 'updated_at',
+  descending: true,
   page: 1,
-  rowsPerPage: 10,
+  rowsPerPage: 15,
   rowsNumber: 0,
 });
 
+// Table columns in exact order specified
 const columns = [
   {
-    name: 'id',
-    required: true,
-    label: 'ID',
+    name: 'employee_id',
+    label: 'Employee ID',
     align: 'left' as const,
-    field: 'id',
+    field: 'employee_id',
     sortable: true,
   },
   {
@@ -953,24 +831,10 @@ const columns = [
     sortable: true,
   },
   {
-    name: 'role',
-    label: 'Role',
+    name: 'display_name',
+    label: 'Name',
     align: 'left' as const,
-    field: 'role',
-    sortable: true,
-  },
-  {
-    name: 'employee_id',
-    label: 'Employee ID',
-    align: 'left' as const,
-    field: 'employee_id',
-    sortable: true,
-  },
-  {
-    name: 'first_name',
-    label: 'First Name',
-    align: 'left' as const,
-    field: 'first_name',
+    field: (row: User) => row.preferred_name || row.first_name || '',
     sortable: true,
   },
   {
@@ -981,10 +845,10 @@ const columns = [
     sortable: true,
   },
   {
-    name: 'preferred_name',
-    label: 'Preferred Name',
+    name: 'home_shop',
+    label: 'Home Shop',
     align: 'left' as const,
-    field: 'preferred_name',
+    field: (row: User) => row.home_location?.name || row.home_shop || '',
     sortable: true,
   },
   {
@@ -996,20 +860,6 @@ const columns = [
     sortable: true,
   },
   {
-    name: 'personal_email',
-    label: 'Personal Email',
-    align: 'left' as const,
-    field: 'personal_email',
-    sortable: true,
-  },
-  {
-    name: 'dext_email',
-    label: 'Dext Email',
-    align: 'left' as const,
-    field: 'dext_email',
-    sortable: true,
-  },
-  {
     name: 'phone_number',
     label: 'Phone',
     align: 'left' as const,
@@ -1017,52 +867,18 @@ const columns = [
     sortable: true,
   },
   {
-    name: 'pin_code',
-    label: 'PIN',
+    name: 'updated_at',
+    label: 'Last Modified',
     align: 'left' as const,
-    field: 'pin_code',
+    field: 'updated_at',
     sortable: true,
   },
   {
-    name: 'home_shop',
-    label: 'Home Shop',
-    align: 'left' as const,
-    field: 'home_shop',
-    sortable: true,
-  },
-  {
-    name: 'slack_id',
-    label: 'Slack ID',
-    align: 'left' as const,
-    field: 'slack_id',
-    sortable: true,
-  },
-  {
-    name: 'address',
-    label: 'Address',
-    align: 'left' as const,
-    field: 'address',
-    sortable: true,
-  },
-  {
-    name: 'paytype',
-    label: 'Pay Type',
-    align: 'left' as const,
-    field: 'paytype',
-    sortable: true,
-  },
-  {
-    name: 'created_at',
-    label: 'Created',
-    align: 'left' as const,
-    field: 'created_at',
-    sortable: true,
-  },
-  {
-    name: 'actions',
-    label: 'Actions',
+    name: 'active',
+    label: 'Status',
     align: 'center' as const,
-    field: 'actions',
+    field: 'active',
+    sortable: true,
   },
 ];
 
@@ -1080,6 +896,7 @@ const filteredUsers = computed(() => {
       (user.employee_id && user.employee_id.toLowerCase().includes(query)) ||
       (user.first_name && user.first_name.toLowerCase().includes(query)) ||
       (user.last_name && user.last_name.toLowerCase().includes(query)) ||
+      (user.preferred_name && user.preferred_name.toLowerCase().includes(query)) ||
       (user.phone_number && user.phone_number.toLowerCase().includes(query))
   );
 });
@@ -1103,18 +920,104 @@ async function fetchUsers() {
   }
 }
 
-function onRequest() {
-  void fetchUsers();
+function onRowClick(_evt: Event, row: User) {
+  // Navigate to user detail page
+  void router.push(`/users/${row.id}`);
 }
 
-function viewUser(user: User) {
-  selectedUser.value = user;
-  showUserDialog.value = true;
+function getUserInitials(user: User): string {
+  const firstName = user.first_name || user.preferred_name || '';
+  const lastName = user.last_name || '';
+
+  if (firstName && lastName) {
+    return `${firstName[0]}${lastName[0]}`.toUpperCase();
+  } else if (firstName) {
+    return firstName.charAt(0).toUpperCase();
+  } else if (user.username) {
+    return user.username.charAt(0).toUpperCase();
+  }
+
+  return '?';
 }
 
-function editUser(user: User) {
-  editForm.value = { ...user };
-  showEditDialog.value = true;
+function getHomeShopName(user: User): string {
+  if (user.home_location?.name) {
+    return user.home_location.name;
+  }
+  if (user.home_shop) {
+    return user.home_shop;
+  }
+  return '—';
+}
+
+function canToggleStatus(user: User): boolean {
+  // Can't toggle own status
+  if (authStore.user?.id === user.id) {
+    return false;
+  }
+  // Check for permission - allow if user has any user management permission
+  // If no permission system set up, default to allowing
+  if (Object.keys(authStore.abilities).length === 0) {
+    return true;
+  }
+  return authStore.can('users.update') || authStore.can('users.manage');
+}
+
+function getToggleTooltip(user: User): string {
+  if (authStore.user?.id === user.id) {
+    return 'Cannot change your own status';
+  }
+  return 'No permission';
+}
+
+async function handleToggleActive(user: User, newValue: boolean) {
+  // Prevent toggling own status
+  if (authStore.user?.id === user.id) {
+    $q.notify({
+      type: 'warning',
+      message: 'You cannot change your own active status',
+      position: 'top',
+    });
+    return;
+  }
+
+  const previousValue = user.active;
+  togglingUserId.value = user.id;
+
+  // Optimistic update
+  const userIndex = users.value.findIndex(u => u.id === user.id);
+  if (userIndex !== -1) {
+    users.value[userIndex].active = newValue;
+  }
+
+  try {
+    await api.patch(`/users/${user.id}/status`, { active: newValue });
+
+    $q.notify({
+      type: 'positive',
+      message: newValue ? 'User activated successfully' : 'User deactivated successfully',
+      position: 'top',
+    });
+  } catch (error) {
+    // Revert on error
+    if (userIndex !== -1) {
+      users.value[userIndex].active = previousValue;
+    }
+
+    console.error('Error updating user status:', error);
+    const errorMessage =
+      error instanceof Error && 'response' in error
+        ? (error as { response?: { data?: { message?: string } } }).response
+            ?.data?.message
+        : undefined;
+    $q.notify({
+      type: 'negative',
+      message: errorMessage || 'Failed to update user status',
+      position: 'top',
+    });
+  } finally {
+    togglingUserId.value = null;
+  }
 }
 
 function openAddUserDialog() {
@@ -1175,7 +1078,7 @@ async function loadRoles() {
 async function saveUser() {
   if (!editForm.value) return;
 
-  loading.value = true;
+  saving.value = true;
   try {
     // Backend now handles role sync in the same update call
     await api.put(`/users/${editForm.value.id}`, editForm.value);
@@ -1195,12 +1098,12 @@ async function saveUser() {
       position: 'top',
     });
   } finally {
-    loading.value = false;
+    saving.value = false;
   }
 }
 
 async function addUser() {
-  loading.value = true;
+  saving.value = true;
   try {
     await api.post('/register', addForm.value);
     $q.notify({
@@ -1223,7 +1126,7 @@ async function addUser() {
       position: 'top',
     });
   } finally {
-    loading.value = false;
+    saving.value = false;
   }
 }
 
@@ -1232,42 +1135,8 @@ function toggleShowInactive() {
   void fetchUsers();
 }
 
-function toggleUserActive(user: User) {
-  const action = user.active ? 'deactivate' : 'activate';
-  $q.dialog({
-    title: `Confirm ${action.charAt(0).toUpperCase() + action.slice(1)}`,
-    message: `Are you sure you want to ${action} ${user.username}?`,
-    cancel: true,
-    persistent: true,
-  }).onOk(() => {
-    void (async () => {
-      try {
-        await api.post(`/users/${user.id}/toggle-active`);
-        $q.notify({
-          type: 'positive',
-          message: `User ${action}d successfully`,
-          position: 'top',
-        });
-        await fetchUsers();
-      } catch (error) {
-        console.error(`Error ${action}ing user:`, error);
-        const errorMessage =
-          error instanceof Error && 'response' in error
-            ? (error as { response?: { data?: { message?: string } } }).response
-                ?.data?.message
-            : undefined;
-        $q.notify({
-          type: 'negative',
-          message: errorMessage || `Failed to ${action} user`,
-          position: 'top',
-        });
-      }
-    })();
-  });
-}
-
-function formatDate(dateString: string) {
-  if (!dateString) return '';
+function formatDate(dateString: string | undefined): string {
+  if (!dateString) return '—';
   const date = new Date(dateString);
   return date.toLocaleDateString('en-US', {
     year: 'numeric',
@@ -1278,24 +1147,15 @@ function formatDate(dateString: string) {
   });
 }
 
-function getRoleLabel(role: string | undefined): string {
-  if (!role) return 'No Role';
-  const roleOption = roleOptions.find(r => r.value === role);
-  return roleOption?.label || role;
+// Phone input handlers using shared utility
+function onEditPhoneInput(val: string) {
+  if (editForm.value) {
+    editForm.value.phone_number = formatPhoneNumber(val);
+  }
 }
 
-function getRoleColor(role: string | undefined): string {
-  const colors: Record<string, string> = {
-    super_admin: 'red',
-    ops_admin: 'deep-orange',
-    dispatcher: 'blue',
-    shop_manager: 'green',
-    parts_manager: 'teal',
-    runner_driver: 'purple',
-    technician_mobile: 'indigo',
-    read_only: 'grey',
-  };
-  return colors[role || 'read_only'] || 'grey';
+function onAddPhoneInput(val: string) {
+  addForm.value.phone_number = formatPhoneNumber(val);
 }
 
 onMounted(() => {
@@ -1306,7 +1166,28 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.q-table {
-  box-shadow: none;
+.users-table :deep(tbody tr) {
+  cursor: pointer;
+}
+
+.users-table :deep(tbody tr:hover) {
+  background-color: rgba(0, 0, 0, 0.03);
+}
+</style>
+
+<style>
+/* Global styles for dropdown popup width constraint */
+.mobile-select-popup {
+  min-width: 0 !important;
+
+  .q-item {
+    min-height: 36px;
+    padding: 4px 12px;
+  }
+
+  .q-item__label {
+    white-space: normal;
+    word-break: break-word;
+  }
 }
 </style>

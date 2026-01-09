@@ -12,7 +12,7 @@ export default defineConfig((ctx) => {
     // app boot file (/src/boot)
     // --> boot files are part of "main.js"
     // https://v2.quasar.dev/quasar-cli-vite/boot-files
-    boot: ['i18n', 'axios'],
+    boot: ['i18n', 'axios', 'auth'],
 
     // https://v2.quasar.dev/quasar-cli-vite/quasar-config-file#css
     css: ['app.scss'],
@@ -53,7 +53,11 @@ export default defineConfig((ctx) => {
 
       // publicPath: '/',
       // analyze: true,
-      // env: {},
+      env: {
+        // API_BASE_URL: for local dev use 'http://localhost:8080/api'
+        // For production builds, use '/api' (relative) or the full URL
+        API_BASE_URL: ctx.dev ? 'http://localhost:8080/api' : '/api',
+      },
       // rawDefine: {}
       // ignorePublicFolder: true,
       // minify: false,
@@ -89,8 +93,12 @@ export default defineConfig((ctx) => {
               lintCommand: 'eslint -c ./eslint.config.js "./src*/**/*.{ts,js,mjs,cjs,vue}"',
               useFlatConfig: true,
             },
+            overlay: {
+              initialIsOpen: false,
+              position: 'br',
+            },
+            enableBuild: false,
           },
-          { server: false },
         ],
       ],
     },

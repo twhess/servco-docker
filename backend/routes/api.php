@@ -38,8 +38,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user', [AuthController::class, 'user']);
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/users', [AuthController::class, 'users']);
+    Route::get('/users/{id}', [AuthController::class, 'showUser']);
     Route::put('/users/{id}', [AuthController::class, 'updateUser']);
+    Route::patch('/users/{id}/status', [AuthController::class, 'updateUserStatus']);
     Route::post('/users/{id}/toggle-active', [AuthController::class, 'toggleUserActive']);
+    Route::post('/users/{id}/avatar', [AuthController::class, 'uploadUserAvatar']);
+    Route::post('/users/{id}/avatar/preset', [AuthController::class, 'setUserPresetAvatar']);
+    Route::delete('/users/{id}/avatar', [AuthController::class, 'deleteUserAvatar']);
 
     // Profile management
     Route::put('/profile', [AuthController::class, 'updateProfile']);

@@ -15,7 +15,18 @@
       "Bash(grep:*)",
       "Bash(xargs:*)",
       "Bash(git mv:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nFix TypeScript errors in CustomerAddressSelect.vue\n\n- Allow undefined in AddressOption interface properties\n- Use null instead of undefined for AddressCreateRequest\n- Add null check before emitting address-created event\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git push:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nFix TypeScript exactOptionalPropertyTypes errors\n\n- Add undefined to optional interface properties\n- Use null instead of undefined for API request properties\n- Add null check for parsed time value\n- Cast address type for emit compatibility\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nFix remaining TypeScript exactOptionalPropertyTypes errors\n\n- Add null check and type cast in VendorAddressSelect\n- Add fallback for undefined hours in useDateUtils\n- Build params object conditionally in EmailsPage\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git checkout:*)",
+      "Bash(git merge:*)",
+      "Bash(git commit:*)",
+      "Bash(npx vue-tsc:*)",
+      "Bash(npx eslint:*)",
+      "Bash(npm run lint)",
+      "Bash(docker-compose up:*)"
     ]
   }
 }
