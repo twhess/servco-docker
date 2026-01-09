@@ -6,12 +6,12 @@ Scripts for managing the ServcoApp on AWS Lightsail (or any LAMP server).
 
 1. Copy these scripts to your server:
    ```bash
-   scp scripts/*.sh user@your-server:/var/www/html/scripts/
+   scp scripts/*.sh user@your-server:/var/www/servco/scripts/
    ```
 
 2. Make them executable:
    ```bash
-   chmod +x /var/www/html/scripts/*.sh
+   chmod +x /var/www/servco/scripts/*.sh
    ```
 
 3. Set database password (optional, scripts will prompt if not set):
@@ -78,11 +78,11 @@ Shows current application status, git info, migration status, and backups.
 Edit the configuration section at the top of each script:
 
 ```bash
-APP_DIR="/var/www/html"           # Laravel application root
+APP_DIR="/var/www/servco"            # Laravel application root
 BACKUP_DIR="/var/backups/servcoapp"  # Backup storage location
-DB_NAME="app"                     # Database name
-DB_USER="app"                     # Database username
-GIT_BRANCH="main"                 # Branch to deploy
+DB_NAME="app"                        # Database name
+DB_USER="app"                        # Database username
+GIT_BRANCH="master"                  # Branch to deploy
 ```
 
 ## Typical Workflow
@@ -145,4 +145,11 @@ Check your DB_PASSWORD environment variable or the password prompt.
 ```bash
 sudo mkdir -p /var/backups/servcoapp
 sudo chown www-data:www-data /var/backups/servcoapp
+```
+
+### Cron job for automatic backups
+Add to crontab (`crontab -e`):
+```bash
+# Run backup at 2 AM daily
+0 2 * * * DB_PASSWORD="yourpass" /var/www/servco/scripts/backup.sh --quiet
 ```

@@ -11,7 +11,14 @@
 
 set -e
 
+# Load environment file if it exists
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR/.env" ]; then
+    source "$SCRIPT_DIR/.env"
+fi
+
 # Configuration
+APP_DIR="/var/www/servco"
 BACKUP_DIR="/var/backups/servcoapp"
 DB_NAME="app"
 DB_USER="app"

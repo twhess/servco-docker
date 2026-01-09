@@ -13,7 +13,7 @@ YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-APP_DIR="/var/www/html"
+APP_DIR="/var/www/servco"
 BACKUP_DIR="/var/backups/servcoapp"
 
 cd "$APP_DIR" 2>/dev/null || {

@@ -8,6 +8,12 @@
 
 set -e
 
+# Load environment file if it exists
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR/.env" ]; then
+    source "$SCRIPT_DIR/.env"
+fi
+
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -15,7 +21,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m'
 
 # Configuration
-APP_DIR="/var/www/html"
+APP_DIR="/var/www/servco"
 DB_NAME="app"
 DB_USER="app"
 DB_PASS="${DB_PASSWORD:-}"
