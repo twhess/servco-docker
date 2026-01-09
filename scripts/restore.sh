@@ -11,7 +11,9 @@ set -e
 # Load environment file if it exists
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ -f "$SCRIPT_DIR/.env" ]; then
+    set -a  # Export all variables
     source "$SCRIPT_DIR/.env"
+    set +a
 fi
 
 # Colors
